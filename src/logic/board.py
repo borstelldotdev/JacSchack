@@ -283,9 +283,3 @@ class Board:
     @property
     def black_pawns(self) -> Bitboard:
         return self.black & self.pawns
-
-if __name__ == "__main__":
-    test_bit = Bitboard(432789)
-    print(test_bit)
-
-

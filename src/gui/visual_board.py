@@ -1,8 +1,9 @@
 import pygame
 import sys
 from src.logic.board import Bitboard, PieceType, Player, Board
-from multiprocessing import Process
-from typing import Callable
+from threading import Thread
+from queue import Queue, Empty
+from time import sleep
 
 GRID_SQUARE_SIZE = 60
 FONT_SIZE = 30
@@ -29,7 +30,7 @@ FONT_COLOR =                    pygame.Color(255, 255, 2)
 
 class VisualBoard:
     def __init__(self, board: Board=None, highlight_bitboard: Bitboard=None, overlay_bitboard: Bitboard=None,
-                 window_title: str="JacSchack", title: str=""):
+                 window_title: str="JacSchack", title: str="", commands: Queue=None):
 
         pygame.init()
         pygame.font.init()
@@ -37,6 +38,7 @@ class VisualBoard:
         pygame.display.set_caption(window_title)
         self.clock = pygame.time.Clock()
         self.running = False
+        self.commands = commands
 
         self.board: Board | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
@@ -68,6 +70,47 @@ class VisualBoard:
     def stop(self):
         self.running = False
 
+    def process_command(self, command: str):
+        command = command.split(" ", maxsplit=2)
+        cmd, args = command[0], command[1:]
+        match cmd.lower():
+            case "help":
+                print("kommandon:")
+                print("`help`: visar hjälp")
+                print("`quit`: avslutar JacSchack GUI")
+                print("`clear`: återställer brädet")
+                print("`fen <fen>`: laddar en FEN")
+                print("`starting-position`: laddar startpositionen")
+                print("`highlight <bitboard: int>`: markerar rutor enligt ett bitboard")
+                print("`highlight clear`: tar bort markeringen")
+                print("`overlay <bitboard: int>`: visualiserar ett bitboard")
+                print("`overlay clear`: tar bort visualiseringen")
+
+            case "quit":
+                self.stop()
+            case "clear":
+                self.board = None
+                self.highlight_bitboard = None
+                self.overlay_bitboard = None
+                self.selected_square = None
+            case "fen":
+                self.board = Board.from_fen(" ".join(args))
+            case "starting-position":
+                self.board = Board.starting_position()
+            case "highlight":
+                if args[0].lower().startswith("clear"):
+                    self.highlight_bitboard = None
+                else:
+                    self.highlight_bitboard = Bitboard(int(args[0], 0))
+            case "overlay":
+                if args[0].lower().startswith("clear"):
+                    self.overlay_bitboard = None
+                else:
+                    self.overlay_bitboard = Bitboard(int(args[0], 0))
+            case _:
+                print(f"Okänt kommando: {cmd}")
+
+
     def mainloop(self):
         self.running = True
         while self.running:
@@ -96,14 +139,16 @@ class VisualBoard:
                 for y in range(8):
                     color: pygame.Color = LIGHT_SQUARE_COLOR if x + y & 1 else DARK_SQUARE_COLOR
 
-                    if self.selected_square is not None and self.selected_square == (x, y):
-                        color += SELECTED_SQUARE_MODIFIER
-                    elif self.highlight_bitboard is not None and self.highlight_bitboard[x, y]:
+
+                    if self.highlight_bitboard is not None and self.highlight_bitboard[x, y]:
                         color = color.lerp(HIGHLIGHTED_SQUARE_COLOR, 0.6)
 
                     elif self.overlay_bitboard is not None:
                         color = color.lerp(BITBOARD_INCLUDED_COLOR if self.overlay_bitboard[x, y]
                                    else BITBOARD_NOT_INCLUDED_COLOR, 0.8)
+
+                    if self.selected_square is not None and self.selected_square == (x, y):
+                        color += SELECTED_SQUARE_MODIFIER
 
 
                     pygame.draw.rect(self.screen, color,
@@ -128,81 +173,38 @@ class VisualBoard:
             self.screen.blit(self.font.render(self.title, True, FONT_COLOR), (BOARD_LEFT_X, SIDE_PADDING))
 
             pygame.display.update()
+            if self.commands is not None:
+                try:
+                    cmd = self.commands.get_nowait()
+                    self.process_command(cmd)
+                except Empty:
+                    pass
             self.clock.tick(60)
 
         pygame.quit()
 
 
-class Backend:
-    def __init__(self, board_setter: Callable[[Board | None], None], highlight_setter: Callable[[Bitboard | None], None],
-                 overlay_setter: Callable[[Bitboard | None], None], selected_setter: Callable[[tuple[int, int] | None], None],
-                 visual_stopper: Callable[[], None],):
-        print("JacSchack GUI")
-        print("Använd `help` för att visa hjälp")
-
-        self.board_setter = board_setter
-        self.highlight_setter = highlight_setter
-        self.overlay_setter = overlay_setter
-        self.selected_setter = selected_setter
-        self.visual_stopper = visual_stopper
-        self.running: bool = False
-
-    def mainloop(self):
-        self.running = True
-        while self.running:
-            cmd = input("(JacSchack GUI) > ")
-            if isinstance(cmd, str):
-                self.process_command(cmd)
-
-    def process_command(self, command: str):
-        cmd, args = command.split(" ", maxsplit=2)
-        match cmd.lower():
-            case "help":
-                print("kommandon:")
-                print("`help`: visar hjälp")
-                print("`quit`: avslutar JacSchack GUI")
-                print("`clear`: återställer brädet")
-                print("`fen <fen>`: laddar en FEN")
-                print("`starting-position`: laddar startpositionen")
-                print("`highlight <bitboard: int>`: markerar rutor enligt ett bitboard")
-                print("`highlight clear`: tar bort markeringen")
-                print("`overlay <bitboard: int>`: visualiserar ett bitboard")
-                print("`overlay clear`: tar bort visualiseringen")
-
-            case "quit":
-                self.visual_stopper()
-                self.running = False
-            case "clear":
-                self.board_setter(None)
-                self.highlight_setter(None)
-                self.overlay_setter(None)
-                self.selected_setter(None)
-            case "fen":
-                self.board_setter(Board.from_fen(args))
-            case "starting-position":
-                self.board_setter(Board.starting_position())
-            case "highlight":
-                if args.lower().startswith("clear"):
-                    self.highlight_setter(None)
-                else:
-                    self.highlight_setter(Bitboard(int(args, 0)))
-            case "overlay":
-                if args.lower().startswith("clear"):
-                    self.overlay_setter(None)
-                else:
-                    self.overlay_setter(Bitboard(int(args, 0)))
+def run_backend(_queue: Queue):
+    while True:
+        cmd = input("(JacSchack GUI) > ")
+        _queue.put(cmd)
+        if cmd.lower().startswith("quit"):
+            return
+        sleep(0.1)
 
 
-
-if __name__ == "__main__":
-    board = VisualBoard()
-    backend = Backend(board)
-    proc = Process(
-        target=backend.mainloop,
-        args=(lambda x: board.x),
+def main():
+    queue = Queue()
+    board = VisualBoard(commands=queue)
+    proc = Thread(
+        target=run_backend,
+        args=(queue,),
         daemon=True
     )
     proc.start()
     board.mainloop()
     sys.exit(0)
+
+if __name__ == "__main__":
+    main()
 
