@@ -39,7 +39,7 @@ class VisualBoard:
         self.clock = pygame.time.Clock()
         self.running = False
         self.commands = commands
-        self.allow_exec: bool = allow_exec
+        self.sudo: bool = allow_exec
 
         self.board: Board | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
@@ -80,13 +80,18 @@ class VisualBoard:
                 print("`help`: visar hjälp")
                 print("`quit`: avslutar JacSchack GUI")
                 print("`clear`: återställer brädet")
-                print("`fen <fen>`: laddar en FEN")
+                print("`fen load <fen>`: laddar en FEN")
+                print("`fen dump`: skriver ut den nuvarande positionen som en FEN")
                 print("`starting-position`: laddar startpositionen")
-                print("`highlight <bitboard: int>`: markerar rutor enligt ett bitboard")
+                print("`move <move>`: gör ett drag")
+                print("`highlight bitboard <bitboard: int>`: markerar rutor enligt ett bitboard")
+                if self.sudo:
+                    print("`highlight property <property>`: markerar en egenskap hos brädet")
                 print("`highlight clear`: tar bort markeringen")
-                print("`overlay <bitboard: int>`: visualiserar ett bitboard")
+                print("`overlay bitboard <bitboard: int>`: visualiserar ett bitboard")
                 print("`overlay clear`: tar bort visualiseringen")
-                if self.allow_exec:
+                if self.sudo:
+                    print("`overlay property <property>`: visualiserar en egenskap hos brädet")
                     print("`exec <python>`: kör ett python-kommando")
 
             case "quit":
@@ -97,21 +102,34 @@ class VisualBoard:
                 self.overlay_bitboard = None
                 self.selected_square = None
             case "fen":
-                self.board = Board.from_fen(" ".join(args))
+                if args[0].lower().startswith("load"):
+                    self.board = Board.from_fen(" ".join(args[1:]))
+                elif args[0].lower().startswith("dump"):
+                    print(self.board.to_fen())
             case "starting-position":
                 self.board = Board.starting_position()
             case "highlight":
                 if args[0].lower().startswith("clear"):
                     self.highlight_bitboard = None
-                else:
+                elif args[0].lower().startswith("property"):
+                    if self.sudo:
+                        self.highlight_bitboard = Bitboard(getattr(self.board, args[1]))
+                    else:
+                        print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
+                elif args[0].lower().startswith("bitboard"):
                     self.highlight_bitboard = Bitboard(int(args[0], 0))
             case "overlay":
                 if args[0].lower().startswith("clear"):
                     self.overlay_bitboard = None
-                else:
+                elif args[0].lower().startswith("property"):
+                    if self.sudo:
+                        self.overlay_bitboard = Bitboard(getattr(self.board, args[1]))
+                    else:
+                        print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
+                elif args[0].lower().startswith("bitboard"):
                     self.overlay_bitboard = Bitboard(int(args[0], 0))
             case "exec":
-                if self.allow_exec:
+                if self.sudo:
                     exec(" ".join(args))
                 else:
                     print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
@@ -187,6 +205,9 @@ class VisualBoard:
                     self.process_command(cmd)
                 except Empty:
                     pass
+                except Exception as e:
+                    print("An error occurred: ", e)
+
             self.clock.tick(60)
 
         pygame.quit()

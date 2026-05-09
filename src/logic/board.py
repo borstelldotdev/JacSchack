@@ -19,6 +19,11 @@ class Player(IntEnum):
 
     NONE = 0
 
+class Move:
+    def __init__(self, from_mask: int, to_mask: int):
+        self.from_mask, self.to_mask = from_mask, to_mask
+
+
 
 class Bitboard(int):
     # Bitboard order:
@@ -28,15 +33,33 @@ class Bitboard(int):
     # (rank 1)  56 . . .63
 
     BITBOARD_SIZE = 0xFF_FF_FF_FF_FF_FF_FF_FF
+    FILE = 0x01_01_01_01_01_01_01_01
 
     def __new__(cls, data: int) -> Self:
         return int.__new__(cls, data)
 
     def shift_vertical(self, y: int):
         if y > 0:
-            return (self << y * 8) & self.BITBOARD_SIZE
+            return Bitboard(self << y * 8)
         else:
-            return self >> y * 8
+            return Bitboard((self >> y * -8) & self.BITBOARD_SIZE)
+
+    @classmethod
+    def left_files(cls, n: int):
+        return cls(~(cls.FILE * ((1 << n) - 1)))
+
+    @classmethod
+    def right_files(cls, n: int):
+        return cls(cls.FILE * ((1 << (8 - n)) - 1))
+
+    def shift_horisontal(self, x: int):
+        if x > 0:
+            return Bitboard(((self & self.right_files(x)) << x) & self.BITBOARD_SIZE)
+        else:
+            return Bitboard((self & self.left_files(-x)) >> -x)
+
+    def shift(self, x: int, y: int):
+        return self.shift_horisontal(x).shift_vertical(y)
 
     def at(self, x: int, y: int) -> bool:
         mask = 1 << (y * 8 + x)
@@ -144,6 +167,10 @@ class Board:
         return cls.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
     @classmethod
+    def empty(cls):
+        return cls.from_fen("8/8/8/8/8/8/8/8 w - - 0 1")
+
+    @classmethod
     def from_fen(cls, fen: str) -> Self:
         board, to_move, castle, en_passant, halfmove, fullmove = fen.split(" ")
 
@@ -213,12 +240,19 @@ class Board:
                         case _:
                             raise ValueError("No such piece: " + char)
                     file += 1
-
+        new.white = Bitboard(new.white)
+        new.black = Bitboard(new.black)
+        new.pawns = Bitboard(new.pawns)
+        new.knights = Bitboard(new.knights)
+        new.bishops = Bitboard(new.bishops)
+        new.rooks = Bitboard(new.rooks)
+        new.kings = Bitboard(new.kings)
+        new.queens = Bitboard(new.queens)
         return new
 
 
     def to_fen(self) -> str:
-        pass
+        fen = 0
 
     def __repr__(self) -> str:
         lines = [
@@ -232,54 +266,91 @@ class Board:
 
         return "\n".join(lines)
 
+    # Drag-genererning
+    @property
+    def pawn_moves(self) -> Bitboard:
+        pass
+
+    @property
+    def knight_moves(self) -> Bitboard:
+        return Bitboard((self.my_knight.shift(1, 2) & ~self.my_pieces) |\
+               (self.my_knight.shift(-1, 2) & ~self.my_pieces) |\
+               (self.my_knight.shift(1, -2) & ~self.my_pieces) |\
+               (self.my_knight.shift(-1, -2) & ~self.my_pieces) |\
+               (self.my_knight.shift(2, 1) & ~self.my_pieces) |\
+               (self.my_knight.shift(-2, 1) & ~self.my_pieces) |\
+               (self.my_knight.shift(2, -1) & ~self.my_pieces) |\
+               (self.my_knight.shift(-2, -1) & ~self.my_pieces))
+
+
+    def gen_sliding_moves(self) -> Bitboard:
+        pass
+
+    @property
+    def king_moves(self) -> Bitboard:
+        pass
+
+    # Pseudo-bitboards
     @property
     def all_pieces(self) -> Bitboard:
         return self.white | self.black
 
-    @property
-    def white_kings(self) -> Bitboard:
-        return self.white & self.kings
+    # Mina pjäser
 
     @property
-    def white_queens(self) -> Bitboard:
-        return self.white & self.queens
+    def my_pieces(self) -> Bitboard:
+        return self.white if self.to_move is Player.WHITE else self.black
 
     @property
-    def white_knight(self) -> Bitboard:
-        return self.white & self.knights
+    def opponent_pieces(self) -> Bitboard:
+        return self.black if self.to_move is Player.WHITE else self.white
+
+
 
     @property
-    def white_bishop(self) -> Bitboard:
-        return self.white & self.bishops
+    def my_kings(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.kings)
 
     @property
-    def white_rooks(self) -> Bitboard:
-        return self.white & self.rooks
+    def my_queens(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.queens)
 
     @property
-    def white_pawns(self) -> Bitboard:
-        return self.white & self.pawns
+    def my_knight(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.knights)
 
     @property
-    def black_kings(self) -> Bitboard:
-        return self.black & self.kings
+    def my_bishop(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.bishops)
 
     @property
-    def black_queens(self) -> Bitboard:
-        return self.black & self.queens
+    def my_rooks(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.rooks)
 
     @property
-    def black_knight(self) -> Bitboard:
-        return self.black & self.knights
+    def my_pawns(self) -> Bitboard:
+        return Bitboard(self.my_pieces & self.pawns)
 
     @property
-    def black_bishop(self) -> Bitboard:
-        return self.black & self.bishops
+    def opponents_kings(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.kings)
 
     @property
-    def black_rooks(self) -> Bitboard:
-        return self.black & self.rooks
+    def opponents_queens(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.queens)
 
     @property
-    def black_pawns(self) -> Bitboard:
-        return self.black & self.pawns
+    def opponents_knight(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.knights)
+
+    @property
+    def opponents_bishop(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.bishops)
+
+    @property
+    def opponents_rooks(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.rooks)
+
+    @property
+    def opponents_pawns(self) -> Bitboard:
+        return Bitboard(self.opponent_pieces & self.pawns)
