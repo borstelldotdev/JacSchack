@@ -18,18 +18,18 @@ class AbstractTest(ABC):
     def get_actual_result(self) -> Any:
         pass
 
-    def perform(self) -> bool:
+    def perform(self) -> tuple[bool, Any]:
         print(f"Performing test `{self.get_name()}`... ", end="")
         expected = self.get_expected_result()
         actual = self.get_actual_result()
         if expected == actual:
             print("passed")
-            return True
+            return True, actual
         else:
             print("failed")
             print(f" - Expected: {expected}")
             print(f" - Actual: {actual}")
-            return False
+            return False, actual
 
     @staticmethod
     @abstractmethod

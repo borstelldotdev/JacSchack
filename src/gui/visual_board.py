@@ -1,12 +1,14 @@
-import pygame
+import pygame, pygame.gfxdraw
 import sys
-from src.logic.abstract_board import AbstractBoard
-from src.logic.enums import PieceType, Player
-from src.logic.bitboard import Bitboard
-from src.logic.board_mailbox import BoardMailbox
 from threading import Thread
 from queue import Queue, Empty
 from time import sleep
+
+from src.logic.abstract_board import AbstractBoard, Move
+from src.logic.enums import PieceType, Player
+from src.logic.bitboard import Bitboard
+from src.logic.board_mailbox import BoardMailbox
+
 
 GRID_SQUARE_SIZE = 60
 FONT_SIZE = 30
@@ -29,11 +31,15 @@ HIGHLIGHTED_SQUARE_COLOR =      pygame.Color(25, 224, 155)
 SELECTED_SQUARE_MODIFIER =      pygame.Color(40, 30, 0)
 SELECTED_SQUARE_OUTLINE =       pygame.Color(80, 80, 80)
 FONT_COLOR =                    pygame.Color(255, 255, 2)
+ARROW_COLOR =                   pygame.Color(255, 0, 0, 192) # RGBA
+ARROW_SHAFT_WIDTH = 8
+ARROW_HEAD_SIZE = 30
 
 
 class VisualBoard:
-    def __init__(self, impl: type, board: AbstractBoard=None, highlight_bitboard: Bitboard=None, overlay_bitboard: Bitboard=None,
-                 window_title: str="JacSchack", title: str="", commands: Queue=None, allow_exec: bool=False):
+    def __init__(self, impl: type, board: AbstractBoard=None, highlight_bitboard: Bitboard=None,
+                 overlay_bitboard: Bitboard=None, overlay_arrows: list[Move]=[],
+                 window_title: str="JacSchack", title: str="", commands: Queue=None, sudo: bool=False):
 
         pygame.init()
         pygame.font.init()
@@ -42,13 +48,14 @@ class VisualBoard:
         self.clock = pygame.time.Clock()
         self.running = False
         self.commands = commands
-        self.sudo: bool = allow_exec
+        self.sudo: bool = sudo
 
         assert issubclass(impl, AbstractBoard)
         self.impl = impl
         self.board: AbstractBoard | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
         self.overlay_bitboard: Bitboard | None = overlay_bitboard
+        self.overlay_arrows: list[Move] | None = overlay_arrows
         self.selected_square: tuple[int, int] | None = None
         self.title = title
         self.font = pygame.font.SysFont(None, FONT_SIZE)
@@ -117,22 +124,22 @@ class VisualBoard:
                 if args[0].lower().startswith("clear"):
                     self.highlight_bitboard = None
                 elif args[0].lower().startswith("property"):
-                    if self.sudo:
-                        self.highlight_bitboard = Bitboard(getattr(self.board, args[1]))
-                    else:
-                        print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
+                    self.highlight_bitboard = Bitboard(getattr(self.board, args[1]))
                 elif args[0].lower().startswith("bitboard"):
                     self.highlight_bitboard = Bitboard(int(args[0], 0))
             case "overlay":
                 if args[0].lower().startswith("clear"):
                     self.overlay_bitboard = None
                 elif args[0].lower().startswith("property"):
-                    if self.sudo:
-                        self.overlay_bitboard = Bitboard(getattr(self.board, args[1]))
-                    else:
-                        print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
+                    self.overlay_bitboard = Bitboard(getattr(self.board, args[1]))
                 elif args[0].lower().startswith("bitboard"):
                     self.overlay_bitboard = Bitboard(int(args[0], 0))
+            case "moves":
+                if args[0].lower().startswith("clear"):
+                    self.overlay_arrows = []
+                if args[0].lower().startswith("show"):
+                    self.overlay_arrows = self.board.moves
+
             case "exec":
                 if self.sudo:
                     exec(" ".join(args))
@@ -141,6 +148,54 @@ class VisualBoard:
             case _:
                 print(f"Okänt kommando: {cmd}")
 
+    def draw_arrow(self, start: pygame.Vector2, end: pygame.Vector2):
+        # Riktnings-vektor
+        direction = (pygame.math.Vector2(end) - pygame.math.Vector2(start)).normalize()
+        ux, uy = direction.x, direction.y
+
+        # Motsatt riktning
+        px = -uy
+        py = ux
+
+        # Punkt där "huvudet" börjar
+        hx = end.x - ux * ARROW_HEAD_SIZE
+        hy = end.y - uy * ARROW_HEAD_SIZE
+
+        half_shaft = ARROW_SHAFT_WIDTH / 2
+        half_head = ARROW_HEAD_SIZE / 2
+
+        # Punkter i kropps-polygonen
+        shaft_points = [
+            (start.x + px * half_shaft, start.y + py * half_shaft),
+            (start.x - px * half_shaft, start.y - py * half_shaft),
+            (hx - px * half_shaft, hy - py * half_shaft),
+            (hx + px * half_shaft, hy + py * half_shaft),
+        ]
+
+        # Punkter i "huvudets" polygon
+        head_points = [
+            (end.x, end.y),
+            (hx - px * half_head, hy - py * half_head),
+            (hx + px * half_head, hy + py * half_head),
+        ]
+
+        # Omvandla till heltal
+        shaft_points = [(int(x), int(y)) for x, y in shaft_points]
+        head_points = [(int(x), int(y)) for x, y in head_points]
+
+        # För att få transparens att funka
+        arrow_surf = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+
+        # Rita kropp
+        pygame.gfxdraw.aapolygon(arrow_surf, shaft_points, ARROW_COLOR)
+        pygame.gfxdraw.filled_polygon(arrow_surf, shaft_points, ARROW_COLOR)
+
+        # Rita huvud
+        pygame.gfxdraw.aapolygon(arrow_surf, head_points, ARROW_COLOR)
+        pygame.gfxdraw.filled_polygon(arrow_surf, head_points, ARROW_COLOR)
+
+        # Rita semi-transparent pil på bräde
+        self.screen.blit(arrow_surf, (0, 0))
 
     def mainloop(self):
         self.running = True
@@ -187,9 +242,10 @@ class VisualBoard:
                                       GRID_SQUARE_SIZE, GRID_SQUARE_SIZE))
 
             if self.selected_square is not None:
-                pygame.draw.rect(self.screen, SELECTED_SQUARE_OUTLINE, (BOARD_LEFT_X + self.selected_square[0] * GRID_SQUARE_SIZE,
-                                                      BOARD_TOP_Y + self.selected_square[1] * GRID_SQUARE_SIZE,
-                                                      GRID_SQUARE_SIZE, GRID_SQUARE_SIZE), width=OUTLINE)
+                pygame.draw.rect(self.screen, SELECTED_SQUARE_OUTLINE,
+                                 (BOARD_LEFT_X + self.selected_square[0] * GRID_SQUARE_SIZE,
+                                      BOARD_TOP_Y + self.selected_square[1] * GRID_SQUARE_SIZE,
+                                      GRID_SQUARE_SIZE, GRID_SQUARE_SIZE), width=OUTLINE)
 
             # Rita pjäser
             if self.board:
@@ -199,6 +255,16 @@ class VisualBoard:
                         if piece[0] != PieceType.NONE and piece[1] != Player.NONE:
                             self.screen.blit(self.PIECES[piece], (BOARD_LEFT_X + x * GRID_SQUARE_SIZE,
                                                                   BOARD_TOP_Y + y * GRID_SQUARE_SIZE))
+
+
+            # Rita pilar
+            for move in self.overlay_arrows:
+                from_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + move.from_square[0] * GRID_SQUARE_SIZE,
+                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + move.from_square[1] * GRID_SQUARE_SIZE)
+                to_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + move.to_square[0] * GRID_SQUARE_SIZE,
+                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + move.to_square[1] * GRID_SQUARE_SIZE)
+                self.draw_arrow(from_pos, to_pos)
+
 
             # Skriv text
             self.screen.blit(self.font.render(self.title, True, FONT_COLOR), (BOARD_LEFT_X, SIDE_PADDING))
@@ -215,10 +281,11 @@ class VisualBoard:
 
             self.clock.tick(60)
 
+
         pygame.quit()
 
 
-def run_backend(_queue: Queue):
+def run_console(_queue: Queue):
     while True:
         cmd = input("(JacSchack GUI) > ")
         _queue.put(cmd)
@@ -229,9 +296,9 @@ def run_backend(_queue: Queue):
 
 def main():
     queue = Queue()
-    board = VisualBoard(impl=BoardMailbox, commands=queue, allow_exec=True)
+    board = VisualBoard(impl=BoardMailbox, commands=queue, sudo=True)
     proc = Thread(
-        target=run_backend,
+        target=run_console,
         args=(queue,),
         daemon=True
     )

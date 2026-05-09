@@ -1,16 +1,14 @@
 from typing import Self
 from src.logic.enums import *
 from src.logic.bitboard import Bitboard
-from src.logic.abstract_board import AbstractBoard
-
-
-class Move:
-    def __init__(self, from_mask: int, to_mask: int):
-        self.from_mask, self.to_mask = from_mask, to_mask
-
+from src.logic.abstract_board import AbstractBoard, Move
 
 
 class BoardBitboard(AbstractBoard):
+    @property
+    def moves(self) -> list[Move]:
+        raise NotImplementedError
+
     def __init__(self, to_move: Player, white_castle_queenside: bool, black_castle_queenside: bool,
                  white_castle_kingside: bool, black_castle_kingside: bool, en_passant_square: tuple[int, int],
                  halfmove: int, fullmove: int,
@@ -145,18 +143,6 @@ class BoardBitboard(AbstractBoard):
         new.kings = Bitboard(new.kings)
         new.queens = Bitboard(new.queens)
         return new
-
-    def __repr__(self) -> str:
-        lines = [
-            "  A B C D E F G H"
-        ]
-
-        for y in range(8):
-            lines.append(str(8 - y) + " ")
-            for x in range(8):
-                lines[-1] = lines[-1] + self.piece_table[self[x, y]]
-
-        return "\n".join(lines)
 
     # Drag-genererning
     @property

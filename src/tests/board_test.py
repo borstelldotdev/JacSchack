@@ -3,7 +3,6 @@ from typing import Any
 from src.tests.abstract_test import AbstractTest
 from src.logic.abstract_board import AbstractBoard
 from src.logic.board_mailbox import BoardMailbox
-from src.logic.board_bitboard_old import BoardBitboard
 
 class ReconstructFenTest(AbstractTest):
     def get_name(self) -> str:
@@ -39,22 +38,24 @@ class ReconstructFenTest(AbstractTest):
 
 
 
-class NumberOfLegalMovesTest(AbstractTest):
+class PerftTest(AbstractTest):
     def get_name(self) -> str:
-        return "Number of legal moves"
+        return "Perft (performance test, move path enumeration)"
 
     def get_description(self) -> str:
-        return "Tests if the correct number of legal moves from a given position is found"
+        return "Tests if the correct number of legal moves from a given position is found" + \
+                f"\ndepth: {self.depth}, fen: {self.test_fen}"
 
     def get_expected_result(self) -> Any:
         return self.legal_moves
 
     def get_actual_result(self) -> Any:
-        board = self.board_impl.from_fen(self.test_fen)
-        return board.to_fen()
+        board = BoardMailbox.from_fen(self.test_fen)
+        return board.count_moves(self.depth)
 
-    def __init__(self, test_fen: str, legal_moves: int) -> None:
+    def __init__(self, test_fen: str, depth: int, legal_moves: int) -> None:
         self.test_fen = test_fen
+        self.depth = depth
         self.legal_moves = legal_moves
 
 
@@ -62,5 +63,8 @@ class NumberOfLegalMovesTest(AbstractTest):
     @staticmethod
     def get_tests() -> list['AbstractTest']:
         return [
-
+            PerftTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 1, 20),
+            PerftTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 2, 400),
+            PerftTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3, 8902),
+            #PerftTest("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 4, 197281)
         ]
