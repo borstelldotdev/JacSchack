@@ -30,7 +30,7 @@ FONT_COLOR =                    pygame.Color(255, 255, 2)
 
 class VisualBoard:
     def __init__(self, board: Board=None, highlight_bitboard: Bitboard=None, overlay_bitboard: Bitboard=None,
-                 window_title: str="JacSchack", title: str="", commands: Queue=None):
+                 window_title: str="JacSchack", title: str="", commands: Queue=None, allow_exec: bool=False):
 
         pygame.init()
         pygame.font.init()
@@ -39,6 +39,7 @@ class VisualBoard:
         self.clock = pygame.time.Clock()
         self.running = False
         self.commands = commands
+        self.allow_exec: bool = allow_exec
 
         self.board: Board | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
@@ -85,6 +86,8 @@ class VisualBoard:
                 print("`highlight clear`: tar bort markeringen")
                 print("`overlay <bitboard: int>`: visualiserar ett bitboard")
                 print("`overlay clear`: tar bort visualiseringen")
+                if self.allow_exec:
+                    print("`exec <python>`: kör ett python-kommando")
 
             case "quit":
                 self.stop()
@@ -107,6 +110,11 @@ class VisualBoard:
                     self.overlay_bitboard = None
                 else:
                     self.overlay_bitboard = Bitboard(int(args[0], 0))
+            case "exec":
+                if self.allow_exec:
+                    exec(" ".join(command))
+                else:
+                    print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
             case _:
                 print(f"Okänt kommando: {cmd}")
 
