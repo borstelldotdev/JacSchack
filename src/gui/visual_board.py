@@ -1,6 +1,9 @@
 import pygame
 import sys
-from src.logic.board import Bitboard, PieceType, Player, Board
+from src.logic.abstract_board import AbstractBoard
+from src.logic.enums import PieceType, Player
+from src.logic.bitboard import Bitboard
+from src.logic.board_mailbox import BoardMailbox
 from threading import Thread
 from queue import Queue, Empty
 from time import sleep
@@ -29,7 +32,7 @@ FONT_COLOR =                    pygame.Color(255, 255, 2)
 
 
 class VisualBoard:
-    def __init__(self, board: Board=None, highlight_bitboard: Bitboard=None, overlay_bitboard: Bitboard=None,
+    def __init__(self, impl: type, board: AbstractBoard=None, highlight_bitboard: Bitboard=None, overlay_bitboard: Bitboard=None,
                  window_title: str="JacSchack", title: str="", commands: Queue=None, allow_exec: bool=False):
 
         pygame.init()
@@ -41,7 +44,9 @@ class VisualBoard:
         self.commands = commands
         self.sudo: bool = allow_exec
 
-        self.board: Board | None = board
+        assert issubclass(impl, AbstractBoard)
+        self.impl = impl
+        self.board: AbstractBoard | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
         self.overlay_bitboard: Bitboard | None = overlay_bitboard
         self.selected_square: tuple[int, int] | None = None
@@ -103,11 +108,11 @@ class VisualBoard:
                 self.selected_square = None
             case "fen":
                 if args[0].lower().startswith("load"):
-                    self.board = Board.from_fen(" ".join(args[1:]))
+                    self.board = self.impl.from_fen(" ".join(args[1:]))
                 elif args[0].lower().startswith("dump"):
                     print(self.board.to_fen())
             case "starting-position":
-                self.board = Board.starting_position()
+                self.board = self.impl.starting_position()
             case "highlight":
                 if args[0].lower().startswith("clear"):
                     self.highlight_bitboard = None
@@ -224,7 +229,7 @@ def run_backend(_queue: Queue):
 
 def main():
     queue = Queue()
-    board = VisualBoard(commands=queue, allow_exec=True)
+    board = VisualBoard(impl=BoardMailbox, commands=queue, allow_exec=True)
     proc = Thread(
         target=run_backend,
         args=(queue,),

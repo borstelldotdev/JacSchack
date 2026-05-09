@@ -1,23 +1,8 @@
-from enum import IntEnum
 from typing import Self
+from src.logic.enums import *
+from src.logic.bitboard import Bitboard
+from src.logic.abstract_board import AbstractBoard
 
-
-class PieceType(IntEnum):
-    PAWN = 100
-    KNIGHT = 300
-    BISHOP = 350
-    ROOK = 500
-    QUEEN = 900
-    KING = 99999
-
-    NONE = 0
-
-
-class Player(IntEnum):
-    WHITE = 1
-    BLACK = -1
-
-    NONE = 0
 
 class Move:
     def __init__(self, from_mask: int, to_mask: int):
@@ -25,81 +10,7 @@ class Move:
 
 
 
-class Bitboard(int):
-    # Bitboard order:
-    #
-    # (rank 8): 0 . . . 7
-    #           .       .
-    # (rank 1)  56 . . .63
-
-    BITBOARD_SIZE = 0xFF_FF_FF_FF_FF_FF_FF_FF
-    FILE = 0x01_01_01_01_01_01_01_01
-
-    def __new__(cls, data: int) -> Self:
-        return int.__new__(cls, data)
-
-    def shift_vertical(self, y: int):
-        if y > 0:
-            return Bitboard(self << y * 8)
-        else:
-            return Bitboard((self >> y * -8) & self.BITBOARD_SIZE)
-
-    @classmethod
-    def left_files(cls, n: int):
-        return cls(~(cls.FILE * ((1 << n) - 1)))
-
-    @classmethod
-    def right_files(cls, n: int):
-        return cls(cls.FILE * ((1 << (8 - n)) - 1))
-
-    def shift_horisontal(self, x: int):
-        if x > 0:
-            return Bitboard(((self & self.right_files(x)) << x) & self.BITBOARD_SIZE)
-        else:
-            return Bitboard((self & self.left_files(-x)) >> -x)
-
-    def shift(self, x: int, y: int):
-        return self.shift_horisontal(x).shift_vertical(y)
-
-    def at(self, x: int, y: int) -> bool:
-        mask = 1 << (y * 8 + x)
-        return (self & mask) != 0
-
-    def __getitem__(self, value: tuple[int, int]):
-        return self.at(value[0], value[1])
-
-    def __repr__(self) -> str:
-        lines = [
-            "  A B C D E F G H"
-        ]
-
-        for y in range(8):
-            lines.append(str(8 - y) + " ")
-            for x in range(8):
-                lines[-1] = lines[-1] + ("X " if self[x, y] else ". ")
-
-        return "\n".join(lines)
-
-
-class Board:
-    piece_table = {
-        (PieceType.NONE, Player.NONE): ".",
-
-        (PieceType.PAWN, Player.WHITE): "P",
-        (PieceType.KNIGHT, Player.WHITE): "N",
-        (PieceType.BISHOP, Player.WHITE): "B",
-        (PieceType.ROOK, Player.WHITE): "R",
-        (PieceType.QUEEN, Player.WHITE): "Q",
-        (PieceType.KING, Player.WHITE): "K",
-
-        (PieceType.PAWN, Player.BLACK): "p",
-        (PieceType.KNIGHT, Player.BLACK): "n",
-        (PieceType.BISHOP, Player.BLACK): "b",
-        (PieceType.ROOK, Player.BLACK): "r",
-        (PieceType.QUEEN, Player.BLACK): "q",
-        (PieceType.KING, Player.BLACK): "k",
-    }
-
+class BoardBitboard(AbstractBoard):
     def __init__(self, to_move: Player, white_castle_queenside: bool, black_castle_queenside: bool,
                  white_castle_kingside: bool, black_castle_kingside: bool, en_passant_square: tuple[int, int],
                  halfmove: int, fullmove: int,
@@ -155,21 +66,6 @@ class Board:
 
         return piece_type, player
 
-    def __getitem__(self, value: tuple[int, int]):
-        return self.at(value[0], value[1])
-
-    @staticmethod
-    def square_to_cords(square: str) -> tuple[int, int]:
-        return "abcdefgh".index(square[0].lower()), 8 - int(square[1])
-
-    @classmethod
-    def starting_position(cls):
-        return cls.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-
-    @classmethod
-    def empty(cls):
-        return cls.from_fen("8/8/8/8/8/8/8/8 w - - 0 1")
-
     @classmethod
     def from_fen(cls, fen: str) -> Self:
         board, to_move, castle, en_passant, halfmove, fullmove = fen.split(" ")
@@ -181,16 +77,16 @@ class Board:
         else:
             player_to_move = Player.NONE
 
-        new = Board(to_move=player_to_move,
-                    white_castle_kingside="K" in castle, white_castle_queenside="Q" in castle,
-                    black_castle_kingside="k" in castle, black_castle_queenside="q" in castle,
-                    en_passant_square=cls.square_to_cords(en_passant) if en_passant != "-" else None,
-                    halfmove=int(halfmove),
-                    fullmove=int(fullmove),
-                    white_bitboard=Bitboard(0), black_bitboard=Bitboard(0), kings_bitboard=Bitboard(0),
-                    queen_bitboard=Bitboard(0), rook_bitboard=Bitboard(0), bishop_bitboard=Bitboard(0),
-                    knight_bitboard=Bitboard(0), pawn_bitboard=Bitboard(0),
-                    )
+        new = BoardBitboard(to_move=player_to_move,
+                            white_castle_kingside="K" in castle, white_castle_queenside="Q" in castle,
+                            black_castle_kingside="k" in castle, black_castle_queenside="q" in castle,
+                            en_passant_square=cls.square_to_cords(en_passant) if en_passant != "-" else None,
+                            halfmove=int(halfmove),
+                            fullmove=int(fullmove),
+                            white_bitboard=Bitboard(0), black_bitboard=Bitboard(0), kings_bitboard=Bitboard(0),
+                            queen_bitboard=Bitboard(0), rook_bitboard=Bitboard(0), bishop_bitboard=Bitboard(0),
+                            knight_bitboard=Bitboard(0), pawn_bitboard=Bitboard(0),
+                            )
 
         ranks = board.split("/")
         for rank in range(8):
@@ -249,10 +145,6 @@ class Board:
         new.kings = Bitboard(new.kings)
         new.queens = Bitboard(new.queens)
         return new
-
-
-    def to_fen(self) -> str:
-        fen = 0
 
     def __repr__(self) -> str:
         lines = [
