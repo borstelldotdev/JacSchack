@@ -112,7 +112,7 @@ class VisualBoard:
                     self.overlay_bitboard = Bitboard(int(args[0], 0))
             case "exec":
                 if self.allow_exec:
-                    exec(" ".join(command))
+                    exec(" ".join(args))
                 else:
                     print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
             case _:
@@ -203,7 +203,7 @@ def run_backend(_queue: Queue):
 
 def main():
     queue = Queue()
-    board = VisualBoard(commands=queue)
+    board = VisualBoard(commands=queue, allow_exec=True)
     proc = Thread(
         target=run_backend,
         args=(queue,),
