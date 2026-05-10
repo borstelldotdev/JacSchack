@@ -37,7 +37,7 @@ ARROW_HEAD_SIZE = 30
 
 
 class VisualBoard:
-    def __init__(self, impl: type, board: AbstractBoard=None, highlight_bitboard: Bitboard=None,
+    def __init__(self, board: AbstractBoard=None, highlight_bitboard: Bitboard=None,
                  overlay_bitboard: Bitboard=None, overlay_arrows: list[Move]=[],
                  window_title: str="JacSchack", title: str="", commands: Queue=None, sudo: bool=False):
 
@@ -50,9 +50,7 @@ class VisualBoard:
         self.commands = commands
         self.sudo: bool = sudo
 
-        assert issubclass(impl, AbstractBoard)
-        self.impl = impl
-        self.board: AbstractBoard | None = board
+        self.board: BoardMailbox | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
         self.overlay_bitboard: Bitboard | None = overlay_bitboard
         self.overlay_arrows: list[Move] | None = overlay_arrows
@@ -118,11 +116,11 @@ class VisualBoard:
                 self.overlay_arrows = []
             case "fen":
                 if args[0].lower().startswith("load"):
-                    self.board = self.impl.from_fen(" ".join(args[1:]))
+                    self.board = BoardMailbox.from_fen(" ".join(args[1:]))
                 elif args[0].lower().startswith("dump"):
                     print(self.board.to_fen())
             case "starting-position":
-                self.board = self.impl.starting_position()
+                self.board = BoardMailbox.starting_position()
             case "highlight":
                 if args[0].lower().startswith("clear"):
                     self.highlight_bitboard = None
@@ -140,8 +138,10 @@ class VisualBoard:
             case "moves":
                 if args[0].lower().startswith("clear"):
                     self.overlay_arrows = []
-                if args[0].lower().startswith("show"):
+                elif args[0].lower().startswith("show"):
                     self.overlay_arrows = self.board.my_moves
+                elif args[0].lower().startswith("property"):
+                    self.overlay_arrows = getattr(self.board, args[1])
 
             case "play":
                 # Spela ett draw
@@ -335,7 +335,7 @@ def run_console(_queue: Queue):
 def main():
     queue = Queue()
     queue.put("starting-position")
-    board = VisualBoard(impl=BoardMailbox, commands=queue, sudo=True)
+    board = VisualBoard(commands=queue, sudo=True)
     proc = Thread(
         target=run_console,
         args=(queue,),

@@ -44,6 +44,7 @@ class Bitboard(int):
         return self.at(key[0], key[1])
 
     def set(self, key: tuple[int, int], value: bool):
+        if not (0 <= key[0] < 8 and 0 <= key[1] < 8): return
         mask = 1 << (key[1] * 8 + key[0])
         return Bitboard((self & ~mask) | (mask * int(value)))
 
