@@ -208,9 +208,21 @@ class BoardMailbox(AbstractBoard):
 
 
     def is_legal_move(self, move: Move, to_move: Player) -> bool:
+        msk = move.from_square[0] + (move.from_square[1] * 8)
+        if move.special_move == SpecialMoveType.KINGSIDE_CASTLE and (
+                self.opponent_attacking & (3 << msk)):
+            return False
+        elif move.special_move == SpecialMoveType.QUEENSIDE_CASTLE and (
+                self.opponent_attacking & (3 << (msk - 1))):
+            return False
+
+
         new = self.make_move(move)
         new.to_move = to_move * -1
         return new.is_legal(to_move * -1)
+
+    def is_empty(self, x: int, y: int) -> bool:
+        return self[x, y] == self.empty_square
 
 
     def gen_moves_at_square(self, x: int, y: int) -> tuple[list[Move], Player]:
@@ -278,6 +290,19 @@ class BoardMailbox(AbstractBoard):
 
             case PieceType.KING:
                 _moves.extend(self.relative_moves(me, (x, y), self.KING_QUEEN_MOVES))
+                if me == Player.WHITE:
+                    if self.white_castle_kingside and self.is_empty(5, 7) and self.is_empty(6, 7):
+                        _moves.append(Move((4, 7), (6, 7), special_move=SpecialMoveType.KINGSIDE_CASTLE))
+                    if (self.white_castle_queenside and self.is_empty(1, 7) and
+                            self.is_empty(2, 7) and self.is_empty(3, 7)):
+                        _moves.append(Move((4, 7), (2, 7), special_move=SpecialMoveType.QUEENSIDE_CASTLE))
+
+                elif me == Player.BLACK:
+                    if self.black_castle_kingside and self.is_empty(5, 0) and self.is_empty(6, 0):
+                        _moves.append(Move((4, 0), (6, 0), special_move=SpecialMoveType.KINGSIDE_CASTLE))
+                    if (self.black_castle_queenside and self.is_empty(1, 0) and
+                            self.is_empty(2, 0) and self.is_empty(3, 0)):
+                        _moves.append(Move((4, 0), (2, 0), special_move=SpecialMoveType.QUEENSIDE_CASTLE))
 
 
         for move in _moves:
@@ -337,8 +362,33 @@ class BoardMailbox(AbstractBoard):
         elif piece_to_move[0] == PieceType.KING:
             if piece_to_move[1] == Player.WHITE:
                 new.white_king = move.to_square
+                new.white_castle_kingside = False
+                new.white_castle_queenside = False
             elif piece_to_move[1] == Player.BLACK:
                 new.black_king = move.to_square
+                new.black_castle_kingside = False
+                new.black_castle_queenside = False
+
+        elif piece_to_move[0] == PieceType.ROOK:
+            match move.from_square:
+                case (0, 0):
+                    new.black_castle_queenside = False
+                case (7, 0):
+                    new.black_castle_kingside = False
+                case (0, 7):
+                    new.white_castle_queenside = False
+                case (7, 7):
+                    new.white_castle_kingside = False
+
+        match move.to_square:
+            case (0, 0):
+                new.black_castle_queenside = False
+            case (7, 0):
+                new.black_castle_kingside = False
+            case (0, 7):
+                new.white_castle_queenside = False
+            case (7, 7):
+                new.white_castle_kingside = False
 
         match move.special_move:
             case SpecialMoveType.NONE:
@@ -354,11 +404,15 @@ class BoardMailbox(AbstractBoard):
             case SpecialMoveType.EN_PASSANT:
                 new[move.to_square[0], move.to_square[1] + new.to_move] = new.empty_square
             case SpecialMoveType.KINGSIDE_CASTLE:
-                pass
+                # Tornet hamnar på höger sida
+                new[5, move.to_square[1]] = new[7, move.to_square[1]]
+                new[7, move.to_square[1]] = new.empty_square
+            case SpecialMoveType.QUEENSIDE_CASTLE:
+                # Tornet hamnar på vänster sida
+                new[3, move.to_square[1]] = new[0, move.to_square[1]]
+                new[0, move.to_square[1]] = new.empty_square
 
 
-
-        # TODO: Rockad
         new.fullmove += 1
         new.halfmove += 1
         new.to_move = new.to_move * -1

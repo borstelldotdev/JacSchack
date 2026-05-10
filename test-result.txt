@@ -1,0 +1,97 @@
+Running 34 tests...
+
+(1/34) Reconstruct FEN passed
+(6/34) Reconstruct FEN passed
+(5/34) Reconstruct FEN passed
+(2/34) Reconstruct FEN passed
+(11/34) Perft passed
+(7/34) Perft passed
+(12/34) Perft passed
+(3/34) Reconstruct FEN passed
+(16/34) Perft passed
+(10/34) Perft passed
+(4/34) Reconstruct FEN passed
+(14/34) Perft passed
+(15/34) Perft passed
+(13/34) Perft failed
+(22/34) Perft passed
+(8/34) Perft passed
+(23/34) Perft failed
+(25/34) Perft passed
+(26/34) Perft passed
+(27/34) Perft passed
+(9/34) Perft passed
+(29/34) Perft passed
+(30/34) Perft passed
+(20/34) Perft failed
+(32/34) Perft passed
+(33/34) Perft passed
+(31/34) Perft passed
+(28/34) Perft passed
+(17/34) Perft failed
+(34/34) Perft failed
+(21/34) Perft failed
+(18/34) Perft passed
+(24/34) Perft failed
+(19/34) Perft failed
+
+Done!
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 1, fen: r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b KQkq - 3 2
+ - Expected: 5
+ - Actual: 7
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 3, fen: rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8
+ - Expected: 62379
+ - Actual: 62478
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 6, fen: 8/P1k5/K7/8/8/8/8/8 w - - 0 1
+ - Expected: 92683
+ - Actual: 228371
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 6, fen: K1k5/8/P7/8/8/8/8/8 w - - 0 1
+ - Expected: 2217
+ - Actual: 17083
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 4, fen: 8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1
+ - Expected: 23527
+ - Actual: 23664
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 2, fen: r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1
+ - Expected: 2039
+ - Actual: 2043
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 3, fen: r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1
+ - Expected: 97862
+ - Actual: 98196
+
+Perft
+Performance test, Move path enumeration
+Tests if the correct number of legal moves from a given position is found
+depth: 3, fen: rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8
+ - Expected: 62379
+ - Actual: 62478
+
+26 passed, 8 failed
+Took 696431 ms

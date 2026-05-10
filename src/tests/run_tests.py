@@ -28,7 +28,7 @@ class Tester:
         print(f"Running {str(len(self.tests))} tests...")
         print()
 
-        with ProcessPoolExecutor(max_workers=5) as proc:
+        with ProcessPoolExecutor(max_workers=8) as proc:
             results: Iterator[tuple[bool, Any, AbstractTest]] \
                 = proc.map(self.perform_idx, range(len(self.tests)))
 
