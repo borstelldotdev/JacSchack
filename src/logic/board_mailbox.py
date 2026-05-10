@@ -180,7 +180,7 @@ class BoardMailbox(AbstractBoard):
 
     @property
     def opponent_moves(self) -> list[Move]:
-        return self.black_moves if self.to_move == Player.BLACK else self.white_moves
+        return self.black_moves if self.to_move == Player.WHITE else self.white_moves
 
     @opponent_moves.setter
     def opponent_moves(self, value: list[Move]) -> None:
@@ -257,6 +257,7 @@ class BoardMailbox(AbstractBoard):
         self.black_attacking = Bitboard(0)
         for x in range(8):
             for y in range(8):
+                print(self.white_attacking)
                 moves, checking_moves, player = self.gen_moves_at_square(x, y)
                 if player == player.WHITE:
                     self._white_moves.extend(moves)
@@ -269,6 +270,23 @@ class BoardMailbox(AbstractBoard):
             self.remove_illegal_moves()
 
     def remove_illegal_moves(self):
+        i = 0
+        while i < len(self._white_moves):
+            if self[self._white_moves[i].from_square][0] == PieceType.KING and \
+                self.black_attacking[self._white_moves[i].to_square]:
+                self._white_moves.pop(i)
+            else:
+                i += 1
+
+        i = 0
+        while i < len(self._black_moves):
+            if self[self._black_moves[i].from_square][0] == PieceType.KING and \
+                    self.white_attacking[self._black_moves[i].to_square]:
+                self._black_moves.pop(i)
+            else:
+                i += 1
+
+
         if self.white_checking_moves:
             i = 0
             while i < len(self._black_moves):
