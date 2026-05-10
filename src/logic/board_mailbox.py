@@ -124,7 +124,7 @@ class BoardMailbox(AbstractBoard):
             cy += pattern[1]
             if multimove:
                 while 0 <= cx < 8 and 0 <= cy < 8:
-                    owner = self[cx, cy][1]
+                    owner = self.at_unsafe(cx, cy)[1]
                     if owner != player:
                         moves.append(Move(from_square, (cx, cy)))
                     if owner != Player.NONE:
@@ -176,10 +176,13 @@ class BoardMailbox(AbstractBoard):
             king_x, king_y = king_start
             king_x += direction[0]
             king_y += direction[1]
+            steps = 0
             while 0 <= king_x < 8 and 0 <= king_y < 8:
-                piece = self[king_x, king_y]
+                steps += 1
+                piece = self.at_unsafe(king_x, king_y)
                 if piece != self.empty_square:
-                    if piece[1] == player_to_move and (piece[0] == PieceType.ROOK or piece[0] == PieceType.QUEEN):
+                    if piece[1] == player_to_move and (piece[0] == PieceType.ROOK or piece[0] == PieceType.QUEEN
+                                                        or (piece[0] == PieceType.KING and steps == 1)):
                         return False
                     break
                 king_x += direction[0]
@@ -189,12 +192,15 @@ class BoardMailbox(AbstractBoard):
             king_x, king_y = king_start
             king_x += direction[0]
             king_y += direction[1]
+            steps = 0
             while 0 <= king_x < 8 and 0 <= king_y < 8:
+                steps += 1
                 piece = self[king_x, king_y]
                 if piece != self.empty_square:
                     if piece[1] == player_to_move and (piece[0] == PieceType.BISHOP or piece[0] == PieceType.QUEEN or (
                                 piece[0] == PieceType.PAWN and ((king_x + 1, king_y - player_to_move) == king_start
-                                                         or (king_x - 1, king_y - player_to_move) == king_start))):
+                                                         or (king_x - 1, king_y - player_to_move) == king_start))
+                                or (piece[0] == PieceType.KING and steps == 1)):
                         return False
                     break
                 king_x += direction[0]
@@ -321,9 +327,9 @@ class BoardMailbox(AbstractBoard):
         for x in range(8):
             for y in range(8):
                 moves, player = self.gen_moves_at_square(x, y)
-                if player == player.WHITE:
+                if player == Player.WHITE:
                     self._white_moves.extend(moves)
-                elif player == player.BLACK:
+                elif player == Player.BLACK:
                     self._black_moves.extend(moves)
 
         if remove_illegal:
@@ -346,15 +352,16 @@ class BoardMailbox(AbstractBoard):
 
 
     def make_move(self, move) -> Self:
-        new = deepcopy(self)
+        new = BoardMailbox(self.data[:], self.to_move * -1, self.white_castle_queenside, self.black_castle_queenside,
+                           self.white_castle_kingside, self.black_castle_kingside, halfmove=self.halfmove + 1,
+                           fullmove=self.fullmove + 1, white_king=self.white_king, black_king=self.black_king)
         piece_to_move: tuple[PieceType, Player] = new[move.from_square]
         new[move.to_square] = piece_to_move
         new[move.from_square] = new.empty_square
 
         # Bonde-saker
-        new.en_passant_square = None
         if piece_to_move[0] == PieceType.PAWN:
-            new.halfmove = -1
+            new.halfmove = 0
             if abs(move.from_square[1] - move.to_square[1]) == 2:
                 # Tillåt en passant nästa drag
                 new.en_passant_square = (move.from_square[0], (move.from_square[1] + move.to_square[1]) // 2)
@@ -402,7 +409,7 @@ class BoardMailbox(AbstractBoard):
             case SpecialMoveType.PROMOTE_QUEEN:
                 new[move.to_square] = (PieceType.QUEEN, piece_to_move[1])
             case SpecialMoveType.EN_PASSANT:
-                new[move.to_square[0], move.to_square[1] + new.to_move] = new.empty_square
+                new[move.to_square[0], move.to_square[1] - new.to_move] = new.empty_square
             case SpecialMoveType.KINGSIDE_CASTLE:
                 # Tornet hamnar på höger sida
                 new[5, move.to_square[1]] = new[7, move.to_square[1]]
@@ -412,10 +419,6 @@ class BoardMailbox(AbstractBoard):
                 new[3, move.to_square[1]] = new[0, move.to_square[1]]
                 new[0, move.to_square[1]] = new.empty_square
 
-
-        new.fullmove += 1
-        new.halfmove += 1
-        new.to_move = new.to_move * -1
         new._white_moves = None
         new._black_moves = None
         new.white_attacking = None
@@ -425,4 +428,4 @@ class BoardMailbox(AbstractBoard):
     def count_moves(self, depth: int) -> int:
         if depth == 1:
             return len(self.my_moves)
-        return sum([self.make_move(x).count_moves(depth - 1) for x in self.my_moves])
+        return sum(self.make_move(x).count_moves(depth - 1) for x in self.my_moves)

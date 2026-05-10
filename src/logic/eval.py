@@ -9,6 +9,7 @@ PAWN_TABLE = [
 
 
 def evaluate(board: BoardMailbox):
+    sum
     for x in range(8):
         for y in range(8):
             piece = board[x, y]
