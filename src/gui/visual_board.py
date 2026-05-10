@@ -3,11 +3,13 @@ import sys
 from threading import Thread
 from queue import Queue, Empty
 from time import sleep
+from enum import Enum, auto
 
 from src.logic.abstract_board import AbstractBoard, Move
 from src.logic.enums import PieceType, Player
 from src.logic.bitboard import Bitboard
 from src.logic.board_mailbox import BoardMailbox
+from src.logic.search import NegaMax
 
 
 GRID_SQUARE_SIZE = 60
@@ -36,10 +38,17 @@ ARROW_SHAFT_WIDTH = 8
 ARROW_HEAD_SIZE = 30
 
 
+class PlayerController(Enum):
+    HUMAN = auto()
+    MACHINE = auto()
+
+
 class VisualBoard:
     def __init__(self, board: AbstractBoard=None, highlight_bitboard: Bitboard=None,
                  overlay_bitboard: Bitboard=None, overlay_arrows: list[Move]=[],
-                 window_title: str="JacSchack", title: str="", commands: Queue=None, sudo: bool=False):
+                 window_title: str="JacSchack", title: str="", commands: Queue=None, sudo: bool=False,
+                 white_controller: PlayerController=PlayerController.HUMAN,
+                 black_controller: PlayerController=PlayerController.HUMAN, engine_depth: int=3):
 
         pygame.init()
         pygame.font.init()
@@ -49,6 +58,11 @@ class VisualBoard:
         self.running = False
         self.commands = commands
         self.sudo: bool = sudo
+        self.flipped: bool = False
+
+        self.white_controller: PlayerController = white_controller
+        self.black_controller: PlayerController = black_controller
+        self.engine_depth: int = engine_depth
 
         self.board: BoardMailbox | None = board
         self.highlight_bitboard: Bitboard | None = highlight_bitboard
@@ -97,13 +111,18 @@ class VisualBoard:
                 print("`starting-position`: laddar startpositionen")
                 print("`move <move>`: gör ett drag")
                 print("`highlight bitboard <bitboard: int>`: markerar rutor enligt ett bitboard")
-                if self.sudo:
-                    print("`highlight property <property>`: markerar en egenskap hos brädet")
+                print("`highlight property <property>`: markerar en egenskap hos brädet")
                 print("`highlight clear`: tar bort markeringen")
                 print("`overlay bitboard <bitboard: int>`: visualiserar ett bitboard")
                 print("`overlay clear`: tar bort visualiseringen")
+                print("`overlay property <property>`: visualiserar en egenskap hos brädet")
+                print("`moves show`: visar alla möjliga drag som en pil")
+                print("`moves clear`: tar bort alla pilar")
+                print("`moves property <property>`: visualiserar en samling drag")
+                print("`flip`: Vänd på brädet")
+                print("`controller <färg> <kontrollerare>`: bestäm vem som kontrollerar ett bräde")
+                print("`engine set-depth <djup>`: Sätt sökdjupet på schackmotorn")
                 if self.sudo:
-                    print("`overlay property <property>`: visualiserar en egenskap hos brädet")
                     print("`exec <python>`: kör ett python-kommando")
 
             case "quit":
@@ -143,9 +162,23 @@ class VisualBoard:
                 elif args[0].lower().startswith("property"):
                     self.overlay_arrows = getattr(self.board, args[1])
 
-            case "play":
-                # Spela ett draw
-                raise NotImplementedError()
+            case "flip":
+                self.flipped = not self.flipped
+
+            case "controller":
+                match (args[0].lower(), args[1].lower()):
+                    case ("white", "human"):
+                        self.white_controller = PlayerController.HUMAN
+                    case ("black", "human"):
+                        self.black_controller = PlayerController.HUMAN
+                    case ("white", "machine"):
+                        self.white_controller = PlayerController.MACHINE
+                    case ("black", "machine"):
+                        self.black_controller = PlayerController.MACHINE
+
+            case "engine":
+                if args[0].lower().startswith("set-depth"):
+                    self.engine_depth = int(args[1])
 
             case "exec":
                 if self.sudo:
@@ -206,9 +239,35 @@ class VisualBoard:
         # Rita semi-transparent pil på bräde
         self.screen.blit(arrow_surf, (0, 0))
 
+    def play_move(self, move: Move):
+        self.board = self.board.make_move(move)
+        self.highlight_bitboard = None
+        self.selected_square = None
+
+    def transform_pos(self, x: int, y: int):
+        if self.flipped:
+            return x, 7 - y
+        else:
+            return x, y
+
     def mainloop(self):
         self.running = True
         while self.running:
+            if self.board:
+                if len(self.board.my_moves) == 0:
+                    self.title = "Schack matt!"
+
+                else:
+                    if self.board.to_move == Player.WHITE:
+                        if self.white_controller == PlayerController.MACHINE:
+                            best = NegaMax().make_decision(self.board, self.engine_depth)
+                            self.play_move(best)
+                    if self.board.to_move == Player.BLACK:
+                        if self.black_controller == PlayerController.MACHINE:
+                            best = NegaMax().make_decision(self.board, self.engine_depth)
+                            self.play_move(best)
+
+
             # Event-loop
             for event in pygame.event.get():
                 match event.type:
@@ -217,8 +276,8 @@ class VisualBoard:
                     case pygame.MOUSEBUTTONDOWN:
                         if pygame.Rect(BOARD_LEFT_X, BOARD_TOP_Y, GRID_SQUARE_SIZE * 8, GRID_SQUARE_SIZE * 8) \
                             .collidepoint(event.pos):
-                            x = (event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE
-                            y = (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE
+                            x, y = self.transform_pos((event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE,
+                                                      (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE)
                             if self.selected_square == (x, y):
                                 self.selected_square = None
                                 self.highlight_bitboard = None
@@ -229,9 +288,7 @@ class VisualBoard:
                                 self.highlight_bitboard = Bitboard(0)
                                 for move in self.board.my_moves:
                                     if move.from_square == self.selected_square and move.to_square == (x, y):
-                                        self.board = self.board.make_move(move)
-                                        self.highlight_bitboard = None
-                                        self.selected_square = None
+                                        self.play_move(move)
                                         no_move_made = False
                                         break
                                     elif move.from_square == (x, y):
@@ -243,22 +300,21 @@ class VisualBoard:
                     case pygame.MOUSEBUTTONUP:
                         self.pickup_x = None
                         self.pickup_y = None
-                        x = (event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE
-                        y = (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE
+                        x, y = self.transform_pos((event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE,
+                                                  (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE)
                         if (x, y) == self.selected_square:
                             continue
                         for move in self.board.my_moves:
                             if move.from_square == self.selected_square and move.to_square == (x, y):
-                                self.board = self.board.make_move(move)
-                                self.highlight_bitboard = None
-                                self.selected_square = None
+                                self.play_move(move)
 
 
             self.screen.fill(BACKGROUND_COLOR)
 
             # Rita rutor
-            for x in range(8):
-                for y in range(8):
+            for xu in range(8):
+                for yu in range(8):
+                    x, y = self.transform_pos(xu, yu)
                     color: pygame.Color = LIGHT_SQUARE_COLOR if x + y & 1 else DARK_SQUARE_COLOR
 
 
@@ -274,22 +330,24 @@ class VisualBoard:
 
 
                     pygame.draw.rect(self.screen, color,
-                                     (BOARD_LEFT_X + x * GRID_SQUARE_SIZE, BOARD_TOP_Y + y * GRID_SQUARE_SIZE,
+                                     (BOARD_LEFT_X + xu * GRID_SQUARE_SIZE, BOARD_TOP_Y + yu * GRID_SQUARE_SIZE,
                                       GRID_SQUARE_SIZE, GRID_SQUARE_SIZE))
 
             if self.selected_square is not None:
+                x, y = self.transform_pos(*self.selected_square)
                 pygame.draw.rect(self.screen, SELECTED_SQUARE_OUTLINE,
-                                 (BOARD_LEFT_X + self.selected_square[0] * GRID_SQUARE_SIZE,
-                                      BOARD_TOP_Y + self.selected_square[1] * GRID_SQUARE_SIZE,
+                                 (BOARD_LEFT_X + x * GRID_SQUARE_SIZE,
+                                      BOARD_TOP_Y + y * GRID_SQUARE_SIZE,
                                       GRID_SQUARE_SIZE, GRID_SQUARE_SIZE), width=OUTLINE)
 
             # Rita pjäser
             if self.board:
                 for x in range(8):
                     for y in range(8):
-                        piece = self.board[x, y]
+                        ix, iy = self.transform_pos(x, y)
+                        piece = self.board[ix, iy]
                         if piece[0] != PieceType.NONE and piece[1] != Player.NONE:
-                            if (x, y) == self.selected_square and pygame.mouse.get_pressed()[0]:
+                            if (ix, iy) == self.selected_square and pygame.mouse.get_pressed()[0]:
                                 pos = pygame.Vector2(pygame.mouse.get_pos())
                                 pos -= (self.pickup_x, self.pickup_y)
                             else:
@@ -299,10 +357,12 @@ class VisualBoard:
 
             # Rita pilar
             for move in self.overlay_arrows:
-                from_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + move.from_square[0] * GRID_SQUARE_SIZE,
-                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + move.from_square[1] * GRID_SQUARE_SIZE)
-                to_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + move.to_square[0] * GRID_SQUARE_SIZE,
-                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + move.to_square[1] * GRID_SQUARE_SIZE)
+                fx, fy = self.transform_pos(*move.from_square)
+                tx, ty = self.transform_pos(*move.to_square)
+                from_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + fx * GRID_SQUARE_SIZE,
+                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + fy * GRID_SQUARE_SIZE)
+                to_pos = pygame.Vector2(BOARD_LEFT_X + GRID_SQUARE_SIZE // 2 + tx * GRID_SQUARE_SIZE,
+                                          BOARD_TOP_Y + GRID_SQUARE_SIZE // 2 + ty * GRID_SQUARE_SIZE)
                 self.draw_arrow(from_pos, to_pos)
 
 

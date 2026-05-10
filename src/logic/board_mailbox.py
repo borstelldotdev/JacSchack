@@ -77,7 +77,7 @@ class BoardMailbox(AbstractBoard):
                     elif char == "K":
                         new.white_king = (file, rank)
                     file += 1
-        new.gen_moves()
+        new.gen_moves(Player.BOTH)
         return new
 
     def at_unsafe(self, x, y) -> tuple[PieceType, Player]:
@@ -132,6 +132,7 @@ class BoardMailbox(AbstractBoard):
                     cx += pattern[0]
                     cy += pattern[1]
             else:
+                # Kan hamna utanför
                 if self[cx, cy][1] != player and 0 <= cx < 8 and 0 <= cy < 8:
                     moves.append(Move(from_square, (cx, cy)))
         return moves
@@ -139,36 +140,14 @@ class BoardMailbox(AbstractBoard):
     @property
     def white_moves(self) -> list[Move]:
         if not self._white_moves:
-            self.gen_moves()
+            self.gen_moves(Player.BOTH)
         return self._white_moves
 
     @property
     def black_moves(self) -> list[Move]:
         if not self._black_moves:
-            self.gen_moves()
+            self.gen_moves(Player.BOTH)
         return self._black_moves
-
-    @property
-    def my_moves(self) -> list[Move]:
-        return self.white_moves if self.to_move == Player.WHITE else self.black_moves
-
-    @my_moves.setter
-    def my_moves(self, value: list[Move]) -> None:
-        if self.to_move == Player.WHITE:
-            self._white_moves = value
-        else:
-            self._black_moves = value
-
-    @property
-    def opponent_moves(self) -> list[Move]:
-        return self.black_moves if self.to_move == Player.WHITE else self.white_moves
-
-    @opponent_moves.setter
-    def opponent_moves(self, value: list[Move]) -> None:
-        if self.to_move == Player.WHITE:
-            self._black_moves = value
-        else:
-            self._white_moves = value
 
     def is_legal(self, player_to_move: Player) -> bool:
         king_start = self.white_king if player_to_move == Player.BLACK else self.black_king  # Motståndarens kung
@@ -310,16 +289,9 @@ class BoardMailbox(AbstractBoard):
                             self.is_empty(2, 0) and self.is_empty(3, 0)):
                         _moves.append(Move((4, 0), (2, 0), special_move=SpecialMoveType.QUEENSIDE_CASTLE))
 
-
-        for move in _moves:
-            if me == Player.WHITE:
-                self.white_attacking = self.white_attacking.set(move.to_square, True)
-            else:
-                self.black_attacking = self.black_attacking.set(move.to_square, True)
-
         return _moves, me
 
-    def gen_moves(self, remove_illegal=True) -> None:
+    def gen_moves(self, remove_illegal_players: Player) -> None:
         self._white_moves = []
         self._black_moves = []
         self.white_attacking = Bitboard(0)
@@ -332,10 +304,17 @@ class BoardMailbox(AbstractBoard):
                 elif player == Player.BLACK:
                     self._black_moves.extend(moves)
 
-        if remove_illegal:
-            self.remove_illegal_moves()
+        for move in self._white_moves:
+            self.white_attacking = self.white_attacking.set(move.to_square, True)
+        for move in self._black_moves:
+            self.black_attacking = self.black_attacking.set(move.to_square, True)
 
-    def remove_illegal_moves(self):
+        if remove_illegal_players == Player.WHITE or remove_illegal_players == Player.BOTH:
+            self.remove_illegal_moves_white()
+        if remove_illegal_players == Player.BLACK or remove_illegal_players == Player.BOTH:
+            self.remove_illegal_moves_black()
+
+    def remove_illegal_moves_white(self):
         i = 0
         while i < len(self._white_moves):
             if self.is_legal_move(self._white_moves[i], Player.WHITE):
@@ -343,6 +322,7 @@ class BoardMailbox(AbstractBoard):
             else:
                 self._white_moves.pop(i)
 
+    def remove_illegal_moves_black(self):
         i = 0
         while i < len(self._black_moves):
             if self.is_legal_move(self._black_moves[i], Player.BLACK):
@@ -350,8 +330,8 @@ class BoardMailbox(AbstractBoard):
             else:
                 self._black_moves.pop(i)
 
-
-    def make_move(self, move) -> Self:
+    def make_move(self, move, gen_moves: bool=False) -> Self:
+        # TODO: in-place moves !!!
         new = BoardMailbox(self.data[:], self.to_move * -1, self.white_castle_queenside, self.black_castle_queenside,
                            self.white_castle_kingside, self.black_castle_kingside, halfmove=self.halfmove + 1,
                            fullmove=self.fullmove + 1, white_king=self.white_king, black_king=self.black_king)
@@ -423,6 +403,8 @@ class BoardMailbox(AbstractBoard):
         new._black_moves = None
         new.white_attacking = None
         new.black_attacking = None
+        if gen_moves:
+            new.gen_moves(Player.BOTH)
         return new
 
     def count_moves(self, depth: int) -> int:

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Self, NamedTuple
 from enum import Enum
 
 from src.logic.enums import PieceType, Player
@@ -16,12 +16,14 @@ class SpecialMoveType(Enum):
     PROMOTE_ROOK = PieceType.ROOK
     PROMOTE_QUEEN = PieceType.QUEEN
 
-class Move:
-    def __init__(self, from_square: tuple[int, int], to_square: tuple[int, int],
-                 special_move: SpecialMoveType=SpecialMoveType.NONE) -> None:
-        self.from_square = from_square
-        self.to_square = to_square
-        self.special_move: SpecialMoveType = special_move
+class Move(NamedTuple):
+    from_square: tuple[int, int]
+    to_square: tuple[int, int]
+    special_move: SpecialMoveType = SpecialMoveType.NONE
+
+    def __repr__(self):
+        return f"{self.from_square} -> {self.to_square} {self.special_move.name \
+                                                        if self.special_move != SpecialMoveType.NONE else ""}"
 
 class AbstractBoard(ABC):
     empty_square = (PieceType.NONE, Player.NONE)
@@ -56,6 +58,8 @@ class AbstractBoard(ABC):
         self.en_passant_square: tuple[int, int] | None = None
         self.halfmove: int = 0
         self.fullmove: int = 1
+        self._white_moves: list[Move] | None = None
+        self._black_moves: list[Move] | None = None
 
 
     @abstractmethod
@@ -154,9 +158,23 @@ class AbstractBoard(ABC):
     def my_moves(self) -> list[Move]:
         return self.white_moves if self.to_move == Player.WHITE else self.black_moves
 
+    @my_moves.setter
+    def my_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self._white_moves = value
+        else:
+            self._black_moves = value
+
     @property
     def opponent_moves(self) -> list[Move]:
         return self.black_moves if self.to_move == Player.WHITE else self.white_moves
+
+    @opponent_moves.setter
+    def opponent_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self._black_moves = value
+        else:
+            self._white_moves = value
 
     @abstractmethod
     def make_move(self, move: Move) -> Self:

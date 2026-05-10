@@ -3,7 +3,7 @@ from enum import IntEnum
 class PieceType(IntEnum):
     PAWN = 100
     KNIGHT = 300
-    BISHOP = 350
+    BISHOP = 320
     ROOK = 500
     QUEEN = 900
     KING = 99999
@@ -16,3 +16,4 @@ class Player(IntEnum):
     BLACK = -1
 
     NONE = 0
+    BOTH = 99
