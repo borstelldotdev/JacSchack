@@ -32,6 +32,8 @@ class BoardMailbox(AbstractBoard):
         self._black_moves: list[Move] | None = None
         self.white_attacking = white_attacking
         self.black_attacking = black_attacking
+        self.white_king_checking_moves: list[Move] = []
+        self.black_king_checking_moves: list[Move] = []
 
     def gen_attackers(self):
         pass
@@ -105,6 +107,28 @@ class BoardMailbox(AbstractBoard):
             self.white_attacking = value
 
     @property
+    def my_king_checking_moves(self) -> list[Move]:
+        return self.white_king_checking_moves if self.to_move == Player.WHITE else self.black_king_checking_moves
+
+    @my_king_checking_moves.setter
+    def my_king_checking_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self.white_king_checking_moves = value
+        else:
+            self.black_king_checking_moves = value
+
+    @property
+    def opponent_king_checking_moves(self) -> list[Move]:
+        return self.black_king_checking_moves if self.to_move == Player.WHITE else self.white_king_checking_moves
+
+    @opponent_king_checking_moves.setter
+    def opponent_king_checking_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self.black_king_checking_moves = value
+        else:
+            self.white_king_checking_moves = value
+
+    @property
     def opponent(self):
         return self.to_move * -1
 
@@ -146,20 +170,34 @@ class BoardMailbox(AbstractBoard):
     def my_moves(self) -> list[Move]:
         return self.white_moves if self.to_move == Player.WHITE else self.black_moves
 
+    @my_moves.setter
+    def my_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self._white_moves = value
+        else:
+            self._black_moves = value
+
     @property
     def opponent_moves(self) -> list[Move]:
         return self.black_moves if self.to_move == Player.BLACK else self.white_moves
 
-    def gen_moves_at_square(self, x: int, y: int) -> None:
+    @opponent_moves.setter
+    def opponent_moves(self, value: list[Move]) -> None:
+        if self.to_move == Player.WHITE:
+            self._black_moves = value
+        else:
+            self._white_moves = value
+
+    def gen_moves_at_square(self, x: int, y: int) -> tuple[list[Move], list[Move], Player]:
         piece = self.at_unsafe(x, y)  # index kan aldrig komma utanför
 
         # Ignorera tomma rutor och motståndares pjäser
         if piece == self.empty_square:
-            return
+            return [], [], Player.NONE
 
         me = piece[1]
         opponent = me * -1
-        _moves = self._white_moves if me == Player.WHITE else self._black_moves
+        _moves, _checking_moves = [], []
 
         match piece[0]:
             case PieceType.PAWN:
@@ -201,7 +239,15 @@ class BoardMailbox(AbstractBoard):
                 _moves.extend(self.relative_moves(me, (x, y), self.KING_QUEEN_MOVES))
 
         for move in _moves:
-            self.me_attacking = self.me_attacking.set(move.from_square, True)
+            if me == Player.WHITE:
+                self.white_attacking = self.white_attacking.set(move.to_square, True)
+            else:
+                self.black_attacking = self.black_attacking.set(move.to_square, True)
+
+            if self[move.to_square][0] == PieceType.KING:
+                _checking_moves.append(move)
+
+        return _moves, _checking_moves, me
 
     def gen_moves(self) -> None:
         self._white_moves = []
@@ -210,7 +256,41 @@ class BoardMailbox(AbstractBoard):
         self.black_attacking = Bitboard(0)
         for x in range(8):
             for y in range(8):
-                self.gen_moves_at_square(x, y)
+                moves, checking_moves, player = self.gen_moves_at_square(x, y)
+                if player == player.WHITE:
+                    self._white_moves.extend(moves)
+                    self.white_king_checking_moves.extend(checking_moves)
+                elif player == player.BLACK:
+                    self._black_moves.extend(moves)
+                    self.black_king_checking_moves.extend(checking_moves)
+
+        self.remove_checking_moves()
+
+    def remove_checking_moves(self):
+        if self.white_king_checking_moves:
+            i = 0
+            while i < len(self._white_moves):
+                current_move = self._white_moves[i]
+                new_board = self.make_move(current_move)
+                for previous_checking_move in self.white_king_checking_moves:
+                    if new_board.gen_moves_at_square(*previous_checking_move.from_square)[1]:
+                        self._white_moves.pop(i)
+                        i -= 1
+                        break
+                i += 1
+
+        if self.black_king_checking_moves:
+            i = 0
+            while i < len(self._black_moves):
+                current_move = self._black_moves[i]
+                new_board = self.make_move(current_move)
+                for previous_checking_move in self.black_king_checking_moves:
+                    if new_board.gen_moves_at_square(*previous_checking_move.from_square)[0]:
+                        self._black_moves.pop(i)
+                        i -= 1
+                        break
+                i += 1
+
 
     def make_move(self, move) -> Self:
         new = deepcopy(self)
@@ -234,6 +314,10 @@ class BoardMailbox(AbstractBoard):
         new.to_move = new.to_move * -1
         new._white_moves = None
         new._black_moves = None
+        new.white_attacking = None
+        new.black_attacking = None
+        new.white_king_checking_moves = []
+        new.black_king_checking_moves = []
         return new
 
     def count_moves(self, depth: int) -> int:

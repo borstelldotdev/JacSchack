@@ -334,6 +334,7 @@ def run_console(_queue: Queue):
 
 def main():
     queue = Queue()
+    queue.put("starting-position")
     board = VisualBoard(impl=BoardMailbox, commands=queue, sudo=True)
     proc = Thread(
         target=run_console,
