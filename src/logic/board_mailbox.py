@@ -204,7 +204,12 @@ class BoardMailbox(AbstractBoard):
             case PieceType.PAWN:
                 # Opponent = riktning bonden går åt
                 if self[x, y + opponent] == self.empty_square:
-                    _moves.append(Move((x, y), (x, y + opponent)))
+                    if (y + opponent == 0) or (y + opponent == 7):
+                        for t in [SpecialMoveType.PROMOTE_QUEEN, SpecialMoveType.PROMOTE_BISHOP,
+                                  SpecialMoveType.PROMOTE_KNIGHT, SpecialMoveType.PROMOTE_ROOK]:
+                            _moves.append(Move((x, y), (x, y + opponent), special_move=t))
+                    else:
+                        _moves.append(Move((x, y), (x, y + opponent)))
 
                     # Flytta två steg från startposition
                     if y == (6 if me == Player.WHITE else 1) \
@@ -213,13 +218,24 @@ class BoardMailbox(AbstractBoard):
 
                 # slå andra pjäser + en passant
                 if self[x + 1, y + opponent][1] == opponent:
-                    _moves.append(Move((x, y), (x + 1, y + opponent)))
+                    if (y + opponent == 0) or (y + opponent == 7):
+                        for t in [SpecialMoveType.PROMOTE_QUEEN, SpecialMoveType.PROMOTE_BISHOP,
+                                  SpecialMoveType.PROMOTE_KNIGHT, SpecialMoveType.PROMOTE_ROOK]:
+                            _moves.append(Move((x, y), (x + 1, y + opponent), special_move=t))
+                    else:
+                        _moves.append(Move((x, y), (x + 1, y + opponent)))
                 elif self.en_passant_square == (x + 1, y + opponent):
                     _moves.append(Move((x, y), (x + 1, y + opponent),
                                        special_move=SpecialMoveType.EN_PASSANT))
 
+
                 if self[x - 1, y + opponent][1] == opponent:
-                    _moves.append(Move((x, y), (x - 1, y + opponent)))
+                    if (y + opponent == 0) or (y + opponent == 7):
+                        for t in [SpecialMoveType.PROMOTE_QUEEN, SpecialMoveType.PROMOTE_BISHOP,
+                                  SpecialMoveType.PROMOTE_KNIGHT, SpecialMoveType.PROMOTE_ROOK]:
+                            _moves.append(Move((x, y), (x - 1, y + opponent), special_move=t))
+                    else:
+                        _moves.append(Move((x, y), (x - 1, y + opponent)))
                 elif self.en_passant_square == (x - 1, y + opponent):
                     _moves.append(Move((x, y), (x - 1, y + opponent),
                                        special_move=SpecialMoveType.EN_PASSANT))
@@ -239,6 +255,7 @@ class BoardMailbox(AbstractBoard):
             case PieceType.KING:
                 _moves.extend(self.relative_moves(me, (x, y), self.KING_QUEEN_MOVES))
 
+
         for move in _moves:
             if me == Player.WHITE:
                 self.white_attacking = self.white_attacking.set(move.to_square, True)
@@ -257,7 +274,6 @@ class BoardMailbox(AbstractBoard):
         self.black_attacking = Bitboard(0)
         for x in range(8):
             for y in range(8):
-                print(self.white_attacking)
                 moves, checking_moves, player = self.gen_moves_at_square(x, y)
                 if player == player.WHITE:
                     self._white_moves.extend(moves)
@@ -320,15 +336,30 @@ class BoardMailbox(AbstractBoard):
         new[move.to_square] = piece_to_move
         new[move.from_square] = new.empty_square
 
-        # En passant
+        # Bonde-saker
         new.en_passant_square = None
         if piece_to_move[0] == PieceType.PAWN:
             new.halfmove = -1
-            if move.special_move == SpecialMoveType.EN_PASSANT:
-                new[move.to_square[0], move.to_square[1] + new.to_move] = new.empty_square
             if abs(move.from_square[1] - move.to_square[1]) == 2:
                 # Tillåt en passant nästa drag
                 new.en_passant_square = (move.from_square[0], (move.from_square[1] + move.to_square[1]) // 2)
+
+
+        match move.special_move:
+            case SpecialMoveType.NONE:
+                pass
+            case SpecialMoveType.PROMOTE_KNIGHT:
+                new[move.to_square] = (PieceType.KNIGHT, piece_to_move[1])
+            case SpecialMoveType.PROMOTE_BISHOP:
+                new[move.to_square] = (PieceType.BISHOP, piece_to_move[1])
+            case SpecialMoveType.PROMOTE_ROOK:
+                new[move.to_square] = (PieceType.ROOK, piece_to_move[1])
+            case SpecialMoveType.PROMOTE_QUEEN:
+                new[move.to_square] = (PieceType.QUEEN, piece_to_move[1])
+            case SpecialMoveType.EN_PASSANT:
+                new[move.to_square[0], move.to_square[1] + new.to_move] = new.empty_square
+            case SpecialMoveType.KINGSIDE_CASTLE:
+                pass
 
         # TODO: Rockad
         new.fullmove += 1

@@ -225,7 +225,6 @@ class VisualBoard:
                                 self.pickup_x = (event.pos[0] - BOARD_LEFT_X) % GRID_SQUARE_SIZE
                                 self.pickup_y = (event.pos[1] - BOARD_TOP_Y) % GRID_SQUARE_SIZE
                                 self.highlight_bitboard = Bitboard(0)
-                                print(self.board.black_moves)
                                 for move in self.board.my_moves:
                                     if move.from_square == self.selected_square and move.to_square == (x, y):
                                         self.board = self.board.make_move(move)
