@@ -152,6 +152,8 @@ class VisualBoard:
                     exec(" ".join(args))
                 else:
                     print("`exec` är avstängt. Slå på det med parametern `VisualBoard(allow_exec=True)`")
+            case "":
+                pass
             case _:
                 print(f"Okänt kommando: {cmd}")
 

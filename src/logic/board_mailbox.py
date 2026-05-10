@@ -7,16 +7,17 @@ from src.logic.enums import Player, PieceType
 
 class BoardMailbox(AbstractBoard):
     KNIGHT_MOVES = [(1, 2), (-1, 2), (1, -2), (-1, -2), (2, 1), (-2, 1), (2, -1), (-2, -1)]
-    PERPENDICULAR_MOVES = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    ORTHOGONAL_MOVES= [(1, 0), (-1, 0), (0, 1), (0, -1)]
     DIAGONAL_MOVES = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-    KING_QUEEN_MOVES = PERPENDICULAR_MOVES + DIAGONAL_MOVES
+    KING_QUEEN_MOVES = ORTHOGONAL_MOVES + DIAGONAL_MOVES
 
 
     def __init__(self, data: list[tuple[PieceType, Player]], to_move: Player,
                  white_castle_queenside: bool, black_castle_queenside: bool,
                  white_castle_kingside: bool, black_castle_kingside: bool,
                  en_passant_square: tuple[int, int] | None=None, halfmove: int=0, fullmove: int=1,
-                 white_attacking: Bitboard | None=None, black_attacking: Bitboard | None=None) -> None:
+                 white_attacking: Bitboard | None=None, black_attacking: Bitboard | None=None,
+                 white_king: tuple[int, int]=None, black_king: tuple[int, int]=None) -> None:
 
         self.data: list[tuple[PieceType, Player]] = data
 
@@ -32,11 +33,8 @@ class BoardMailbox(AbstractBoard):
         self._black_moves: list[Move] | None = None
         self.white_attacking = white_attacking
         self.black_attacking = black_attacking
-        self.white_checking_moves: list[Move] = []
-        self.black_checking_moves: list[Move] = []
-
-    def gen_attackers(self):
-        pass
+        self.white_king: tuple[int, int] = white_king
+        self.black_king: tuple[int, int] = black_king
 
     def __setitem__(self, key: tuple[int, int], value: tuple[PieceType, Player]) -> None:
         if 0 <= key[0] < 8 and 0 <= key[1] < 8:
@@ -74,6 +72,11 @@ class BoardMailbox(AbstractBoard):
                     new.data.extend([cls.empty_square] * int(char))
                 else:
                     new.data.append(cls.reverse_piece_table[char])
+                    if char == "k":
+                        new.black_king = (file, rank)
+                    elif char == "K":
+                        new.white_king = (file, rank)
+                    file += 1
         new.gen_moves()
         return new
 
@@ -106,28 +109,6 @@ class BoardMailbox(AbstractBoard):
             self.black_attacking = value
         else:
             self.white_attacking = value
-
-    @property
-    def my_king_checking_moves(self) -> list[Move]:
-        return self.white_checking_moves if self.to_move == Player.WHITE else self.black_checking_moves
-
-    @my_king_checking_moves.setter
-    def my_king_checking_moves(self, value: list[Move]) -> None:
-        if self.to_move == Player.WHITE:
-            self.white_checking_moves = value
-        else:
-            self.black_checking_moves = value
-
-    @property
-    def opponent_king_checking_moves(self) -> list[Move]:
-        return self.black_checking_moves if self.to_move == Player.WHITE else self.white_checking_moves
-
-    @opponent_king_checking_moves.setter
-    def opponent_king_checking_moves(self, value: list[Move]) -> None:
-        if self.to_move == Player.WHITE:
-            self.black_checking_moves = value
-        else:
-            self.white_checking_moves = value
 
     @property
     def opponent(self):
@@ -189,16 +170,59 @@ class BoardMailbox(AbstractBoard):
         else:
             self._white_moves = value
 
-    def gen_moves_at_square(self, x: int, y: int) -> tuple[list[Move], list[Move], Player]:
+    def is_legal(self, player_to_move: Player) -> bool:
+        king_start = self.white_king if player_to_move == Player.BLACK else self.black_king  # Motståndarens kung
+        for direction in self.ORTHOGONAL_MOVES:
+            king_x, king_y = king_start
+            king_x += direction[0]
+            king_y += direction[1]
+            while 0 <= king_x < 8 and 0 <= king_y < 8:
+                piece = self[king_x, king_y]
+                if piece != self.empty_square:
+                    if piece[1] == player_to_move and (piece[0] == PieceType.ROOK or piece[0] == PieceType.QUEEN):
+                        return False
+                    break
+                king_x += direction[0]
+                king_y += direction[1]
+
+        for direction in self.DIAGONAL_MOVES:
+            king_x, king_y = king_start
+            king_x += direction[0]
+            king_y += direction[1]
+            while 0 <= king_x < 8 and 0 <= king_y < 8:
+                piece = self[king_x, king_y]
+                if piece != self.empty_square:
+                    if piece[1] == player_to_move and (piece[0] == PieceType.BISHOP or piece[0] == PieceType.QUEEN or (
+                                piece[0] == PieceType.PAWN and ((king_x + 1, king_y - player_to_move) == king_start
+                                                         or (king_x - 1, king_y - player_to_move) == king_start))):
+                        return False
+                    break
+                king_x += direction[0]
+                king_y += direction[1]
+
+        for direction in self.KNIGHT_MOVES:
+            if self[king_start[0] + direction[0], king_start[1] + direction[1]] == (PieceType.KNIGHT, player_to_move):
+                return False
+
+        return True
+
+
+    def is_legal_move(self, move: Move, to_move: Player) -> bool:
+        new = self.make_move(move)
+        new.to_move = to_move * -1
+        return new.is_legal(to_move * -1)
+
+
+    def gen_moves_at_square(self, x: int, y: int) -> tuple[list[Move], Player]:
         piece = self.at_unsafe(x, y)  # index kan aldrig komma utanför
 
         # Ignorera tomma rutor och motståndares pjäser
         if piece == self.empty_square:
-            return [], [], Player.NONE
+            return [], Player.NONE
 
         me = piece[1]
         opponent = me * -1
-        _moves, _checking_moves = [], []
+        _moves = []
 
         match piece[0]:
             case PieceType.PAWN:
@@ -247,7 +271,7 @@ class BoardMailbox(AbstractBoard):
                 _moves.extend(self.relative_moves(me, (x, y), self.DIAGONAL_MOVES, multimove=True))
 
             case PieceType.ROOK:
-                _moves.extend(self.relative_moves(me, (x, y), self.PERPENDICULAR_MOVES, multimove=True))
+                _moves.extend(self.relative_moves(me, (x, y), self.ORTHOGONAL_MOVES, multimove=True))
 
             case PieceType.QUEEN:
                 _moves.extend(self.relative_moves(me, (x, y), self.KING_QUEEN_MOVES, multimove=True))
@@ -262,10 +286,7 @@ class BoardMailbox(AbstractBoard):
             else:
                 self.black_attacking = self.black_attacking.set(move.to_square, True)
 
-            if self[move.to_square][0] == PieceType.KING:
-                _checking_moves.append(move)
-
-        return _moves, _checking_moves, me
+        return _moves, me
 
     def gen_moves(self, remove_illegal=True) -> None:
         self._white_moves = []
@@ -274,13 +295,11 @@ class BoardMailbox(AbstractBoard):
         self.black_attacking = Bitboard(0)
         for x in range(8):
             for y in range(8):
-                moves, checking_moves, player = self.gen_moves_at_square(x, y)
+                moves, player = self.gen_moves_at_square(x, y)
                 if player == player.WHITE:
                     self._white_moves.extend(moves)
-                    self.white_checking_moves.extend(checking_moves)
                 elif player == player.BLACK:
                     self._black_moves.extend(moves)
-                    self.black_checking_moves.extend(checking_moves)
 
         if remove_illegal:
             self.remove_illegal_moves()
@@ -288,46 +307,17 @@ class BoardMailbox(AbstractBoard):
     def remove_illegal_moves(self):
         i = 0
         while i < len(self._white_moves):
-            if self[self._white_moves[i].from_square][0] == PieceType.KING and \
-                self.black_attacking[self._white_moves[i].to_square]:
-                self._white_moves.pop(i)
-            else:
+            if self.is_legal_move(self._white_moves[i], Player.WHITE):
                 i += 1
+            else:
+                self._white_moves.pop(i)
 
         i = 0
         while i < len(self._black_moves):
-            if self[self._black_moves[i].from_square][0] == PieceType.KING and \
-                    self.white_attacking[self._black_moves[i].to_square]:
-                self._black_moves.pop(i)
+            if self.is_legal_move(self._black_moves[i], Player.BLACK):
+                i += 1
             else:
-                i += 1
-
-
-        if self.white_checking_moves:
-            i = 0
-            while i < len(self._black_moves):
-                current_move = self._black_moves[i]
-                new_board = self.make_move(current_move)
-                new_board.gen_moves(remove_illegal=False)
-                for previous_checking_move in self.white_checking_moves:
-                    if new_board.gen_moves_at_square(*previous_checking_move.from_square)[1]:
-                        self._black_moves.pop(i)
-                        i -= 1
-                        break
-                i += 1
-
-        if self.black_checking_moves:
-            i = 0
-            while i < len(self._white_moves):
-                current_move = self._white_moves[i]
-                new_board = self.make_move(current_move)
-                new_board.gen_moves(remove_illegal=False)
-                for previous_checking_move in self.black_checking_moves:
-                    if new_board.gen_moves_at_square(*previous_checking_move.from_square)[0]:
-                        self._white_moves.pop(i)
-                        i -= 1
-                        break
-                i += 1
+                self._black_moves.pop(i)
 
 
     def make_move(self, move) -> Self:
@@ -344,6 +334,11 @@ class BoardMailbox(AbstractBoard):
                 # Tillåt en passant nästa drag
                 new.en_passant_square = (move.from_square[0], (move.from_square[1] + move.to_square[1]) // 2)
 
+        elif piece_to_move[0] == PieceType.KING:
+            if piece_to_move[1] == Player.WHITE:
+                new.white_king = move.to_square
+            elif piece_to_move[1] == Player.BLACK:
+                new.black_king = move.to_square
 
         match move.special_move:
             case SpecialMoveType.NONE:
@@ -361,6 +356,8 @@ class BoardMailbox(AbstractBoard):
             case SpecialMoveType.KINGSIDE_CASTLE:
                 pass
 
+
+
         # TODO: Rockad
         new.fullmove += 1
         new.halfmove += 1
@@ -369,8 +366,6 @@ class BoardMailbox(AbstractBoard):
         new._black_moves = None
         new.white_attacking = None
         new.black_attacking = None
-        new.white_checking_moves = []
-        new.black_checking_moves = []
         return new
 
     def count_moves(self, depth: int) -> int:
