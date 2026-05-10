@@ -40,8 +40,12 @@ class Bitboard(int):
         mask = 1 << (y * 8 + x)
         return (self & mask) != 0
 
-    def __getitem__(self, value: tuple[int, int]):
-        return self.at(value[0], value[1])
+    def __getitem__(self, key: tuple[int, int]):
+        return self.at(key[0], key[1])
+
+    def set(self, key: tuple[int, int], value: bool):
+        mask = 1 << (key[1] * 8 + key[0])
+        return Bitboard((self & ~mask) | (mask * int(value)))
 
     def __repr__(self) -> str:
         lines = [

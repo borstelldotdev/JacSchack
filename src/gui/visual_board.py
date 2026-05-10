@@ -57,6 +57,8 @@ class VisualBoard:
         self.overlay_bitboard: Bitboard | None = overlay_bitboard
         self.overlay_arrows: list[Move] | None = overlay_arrows
         self.selected_square: tuple[int, int] | None = None
+        self.pickup_x: int | None = None
+        self.pickup_y: int | None = None
         self.title = title
         self.font = pygame.font.SysFont(None, FONT_SIZE)
 
@@ -113,6 +115,7 @@ class VisualBoard:
                 self.highlight_bitboard = None
                 self.overlay_bitboard = None
                 self.selected_square = None
+                self.overlay_arrows = []
             case "fen":
                 if args[0].lower().startswith("load"):
                     self.board = self.impl.from_fen(" ".join(args[1:]))
@@ -138,7 +141,11 @@ class VisualBoard:
                 if args[0].lower().startswith("clear"):
                     self.overlay_arrows = []
                 if args[0].lower().startswith("show"):
-                    self.overlay_arrows = self.board.moves
+                    self.overlay_arrows = self.board.my_moves
+
+            case "play":
+                # Spela ett draw
+                raise NotImplementedError()
 
             case "exec":
                 if self.sudo:
@@ -210,12 +217,39 @@ class VisualBoard:
                             .collidepoint(event.pos):
                             x = (event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE
                             y = (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE
-                            if self.selected_square is None:
-                                self.selected_square = (x, y)
-                            elif self.selected_square == (x, y):
+                            if self.selected_square == (x, y):
                                 self.selected_square = None
+                                self.highlight_bitboard = None
                             else:
-                                self.selected_square = (x, y)
+                                no_move_made = True
+                                self.pickup_x = (event.pos[0] - BOARD_LEFT_X) % GRID_SQUARE_SIZE
+                                self.pickup_y = (event.pos[1] - BOARD_TOP_Y) % GRID_SQUARE_SIZE
+                                self.highlight_bitboard = Bitboard(0)
+                                for move in self.board.my_moves:
+                                    if move.from_square == self.selected_square and move.to_square == (x, y):
+                                        self.board = self.board.make_move(move)
+                                        self.highlight_bitboard = None
+                                        self.selected_square = None
+                                        no_move_made = False
+                                        break
+                                    elif move.from_square == (x, y):
+                                        self.highlight_bitboard = self.highlight_bitboard.set(move.to_square, True)
+
+                                if no_move_made:
+                                    self.selected_square = (x, y)
+
+                    case pygame.MOUSEBUTTONUP:
+                        self.pickup_x = None
+                        self.pickup_y = None
+                        x = (event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE
+                        y = (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE
+                        if (x, y) == self.selected_square:
+                            continue
+                        for move in self.board.my_moves:
+                            if move.from_square == self.selected_square and move.to_square == (x, y):
+                                self.board = self.board.make_move(move)
+                                self.highlight_bitboard = None
+                                self.selected_square = None
 
 
             self.screen.fill(BACKGROUND_COLOR)
@@ -253,8 +287,12 @@ class VisualBoard:
                     for y in range(8):
                         piece = self.board[x, y]
                         if piece[0] != PieceType.NONE and piece[1] != Player.NONE:
-                            self.screen.blit(self.PIECES[piece], (BOARD_LEFT_X + x * GRID_SQUARE_SIZE,
-                                                                  BOARD_TOP_Y + y * GRID_SQUARE_SIZE))
+                            if (x, y) == self.selected_square and pygame.mouse.get_pressed()[0]:
+                                pos = pygame.Vector2(pygame.mouse.get_pos())
+                                pos -= (self.pickup_x, self.pickup_y)
+                            else:
+                                pos = (BOARD_LEFT_X + x * GRID_SQUARE_SIZE, BOARD_TOP_Y + y * GRID_SQUARE_SIZE)
+                            self.screen.blit(self.PIECES[piece], pos)
 
 
             # Rita pilar

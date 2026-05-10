@@ -1,12 +1,27 @@
 from abc import ABC, abstractmethod
 from typing import Self
+from enum import Enum
 
 from src.logic.enums import PieceType, Player
 
+class SpecialMoveType(Enum):
+    NONE = 0
+
+    EN_PASSANT = 1
+    KINGSIDE_CASTLE = 10
+    QUEENSIDE_CASTLE = 11
+
+    PROMOTE_KNIGHT = PieceType.KNIGHT
+    PROMOTE_BISHOP = PieceType.BISHOP
+    PROMOTE_ROOK = PieceType.ROOK
+    PROMOTE_QUEEN = PieceType.QUEEN
+
 class Move:
-    def __init__(self, from_square: tuple[int, int], to_square: tuple[int, int]) -> None:
+    def __init__(self, from_square: tuple[int, int], to_square: tuple[int, int],
+                 special_move: SpecialMoveType=SpecialMoveType.NONE) -> None:
         self.from_square = from_square
         self.to_square = to_square
+        self.special_move: SpecialMoveType = special_move
 
 class AbstractBoard(ABC):
     empty_square = (PieceType.NONE, Player.NONE)
@@ -127,8 +142,21 @@ class AbstractBoard(ABC):
 
     @property
     @abstractmethod
-    def moves(self) -> list[Move]:
+    def white_moves(self) -> list[Move]:
         pass
+
+    @property
+    @abstractmethod
+    def black_moves(self) -> list[Move]:
+        pass
+
+    @property
+    def my_moves(self) -> list[Move]:
+        return self.white_moves if self.to_move == Player.WHITE else self.black_moves
+
+    @property
+    def opponent_moves(self) -> list[Move]:
+        return self.black_moves if self.to_move == Player.WHITE else self.white_moves
 
     @abstractmethod
     def make_move(self, move: Move) -> Self:
