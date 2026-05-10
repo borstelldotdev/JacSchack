@@ -1,45 +1,51 @@
-from typing import Any
+from typing import Any, Iterator
 
 from src.tests.abstract_test import AbstractTest
 from src.tests.board_test import ReconstructFenTest, PerftTest
+from concurrent.futures import ProcessPoolExecutor
 
 import sys
 
-def test():
-    test_classes: list[type[AbstractTest]] = [
-        ReconstructFenTest,
-        PerftTest
-    ]
 
-    tests: list[AbstractTest] = []
-    failed: list[tuple[AbstractTest, Any]] = []
+class Tester:
+    def __init__(self, *args):
+        self.test_classes: list[type[AbstractTest]] = list(args)
+        self.tests: list[AbstractTest] = []
 
-    for test_class in test_classes:
-        tests.extend(test_class.get_tests())
+        for test_class in self.test_classes:
+            self.tests.extend(test_class.get_tests())
 
+    def peform_idx(self, idx: int):
+        return self.tests[idx].perform(f"({int(idx) + 1}/{len(self.tests)})")
 
-    print(f"Running {str(len(tests))} tests...")
-    print()
-
-    for test_id in range(len(tests)):
-        print(f"({int(test_id) + 1}/{len(tests)})", end=" ")
-        result = tests[test_id].perform()
-        if not result[0]:
-            failed.append((tests[test_id], result[1]))
-
-    print()
-    print("Done!")
-    print(f"{str(len(tests) - len(failed))} passed, {str(len(failed))} failed")
-    if failed:
+    def test(self):
+        print(f"Running {str(len(self.tests))} tests...")
         print()
-        print("Failed tests:")
-        for failed_test in failed:
-            print(failed_test[0].get_name())
-            print(failed_test[0].get_description())
-            print(f" - Expected: {failed_test[0].get_expected_result()}")
-            print(f" - Actual: {failed_test[1]}")
+
+        with ProcessPoolExecutor(max_workers=5) as proc:
+            results: Iterator[tuple[bool, Any, AbstractTest]] \
+                = proc.map(self.peform_idx, range(len(self.tests)))
+
+        print()
+        print("Done!")
+        print()
+        failed = 0
+        for result in results:
+            if result[0]: continue
+
+            failed += 1
+            print(result[2].get_name())
+            print(result[2].get_description())
+            print(f" - Expected: {result[2].get_expected_result()}")
+            print(f" - Actual: {result[1]}")
             print()
+
+
+        print(f"{str(len(self.tests) - failed)} passed, {str(failed)} failed")
         sys.exit(-1)
 
 if __name__ == "__main__":
-    test()
+    Tester(
+        ReconstructFenTest,
+        PerftTest
+    ).test()

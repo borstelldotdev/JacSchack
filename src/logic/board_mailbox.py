@@ -2,6 +2,7 @@ from typing import Self
 from copy import deepcopy
 
 from src.logic.abstract_board import AbstractBoard, Move
+from src.logic.bitboard import Bitboard
 from src.logic.enums import Player, PieceType
 
 class BoardMailbox(AbstractBoard):
@@ -14,7 +15,8 @@ class BoardMailbox(AbstractBoard):
     def __init__(self, data: list[tuple[PieceType, Player]], to_move: Player,
                  white_castle_queenside: bool, black_castle_queenside: bool,
                  white_castle_kingside: bool, black_castle_kingside: bool,
-                 en_passant_square: tuple[int, int] | None=None, halfmove: int=0, fullmove: int=1) -> None:
+                 en_passant_square: tuple[int, int] | None=None, halfmove: int=0, fullmove: int=1,
+                 white_attacking: Bitboard | None=None, black_attacking: Bitboard | None=None) -> None:
 
         self.data: list[tuple[PieceType, Player]] = data
 
@@ -25,6 +27,13 @@ class BoardMailbox(AbstractBoard):
         self.black_castle_kingside: bool = black_castle_kingside
         self.en_passant_square: tuple[int, int] | None = en_passant_square
         self.halfmove, self.fullmove = halfmove, fullmove
+
+        self._moves: list[Move] | None = None
+        self.white_attacking = white_attacking
+        self.black_attacking = black_attacking
+
+    def gen_attackers(self):
+        pass
 
     def __setitem__(self, key: tuple[int, int], value: tuple[PieceType, Player]) -> None:
         if 0 <= key[0] < 8 and 0 <= key[1] < 8:
@@ -72,7 +81,7 @@ class BoardMailbox(AbstractBoard):
     def opponent(self):
         return self.to_move * -1
 
-    def relative_moves(self, from_square: tuple[int, int], patterns: list[tuple[int, int]],
+    def relative_moves(self, player: int, from_square: tuple[int, int], patterns: list[tuple[int, int]],
                        multimove: bool=False) -> list[Move]:
 
         moves: list[Move] = []
@@ -83,62 +92,70 @@ class BoardMailbox(AbstractBoard):
             if multimove:
                 while 0 <= cx < 8 and 0 <= cy < 8:
                     owner = self[cx, cy][1]
-                    if owner != self.to_move:
+                    if owner != player:
                         moves.append(Move(from_square, (cx, cy)))
                     if owner != Player.NONE:
                         break
                     cx += pattern[0]
                     cy += pattern[1]
             else:
-                if self[cx, cy][1] != self.to_move and 0 <= cx < 8 and 0 <= cy < 8:
+                if self[cx, cy][1] != player and 0 <= cx < 8 and 0 <= cy < 8:
                     moves.append(Move(from_square, (cx, cy)))
         return moves
 
     @property
     def moves(self) -> list[Move]:
+        if self._moves:
+            return self._moves
+        self._moves = self.gen_moves(self.to_move)
+        return self._moves
+
+    def gen_moves(self, player: int) -> list[Move]:
+        opponent = player * -1
         _moves: list[Move] = []
         for x in range(8):
             for y in range(8):
                 piece = self.at_unsafe(x, y) # index kan aldrig komma utanför
 
                 # Ignorera tomma rutor och motståndares pjäser
-                if piece[1] != self.to_move:
+                if piece[1] != player:
                     continue
 
                 match piece[0]:
                     case PieceType.PAWN:
                         # Opponent = riktning bonden går åt
-                        if self[x, y + self.opponent] == self.empty_square:
-                            _moves.append(Move((x, y), (x, y + self.opponent)))
+                        if self[x, y + opponent] == self.empty_square:
+                            _moves.append(Move((x, y), (x, y + opponent)))
 
                             # Flytta två steg från startposition
-                            if y == (6 if self.to_move == Player.WHITE else 1) \
-                                and self[x, y + (self.opponent * 2)] == self.empty_square:
-                                _moves.append(Move((x, y), (x, y + (self.opponent * 2))))
+                            if y == (6 if player == Player.WHITE else 1) \
+                                and self[x, y + (opponent * 2)] == self.empty_square:
+                                _moves.append(Move((x, y), (x, y + (opponent * 2))))
 
                         # slå andra pjäser + en passant
-                        if self[x + 1, y + self.opponent][1] == self.opponent \
-                                or self.en_passant_square == (x + 1, y + self.opponent):
-                            _moves.append(Move((x, y), (x + 1, y + self.opponent)))
+                        if self[x + 1, y + opponent][1] == opponent \
+                                or self.en_passant_square == (x + 1, y + opponent):
+                                # fixa logik
+                            _moves.append(Move((x, y), (x + 1, y + opponent)))
 
-                        if self[x - 1, y + self.opponent][1] == self.opponent \
-                                or self.en_passant_square == (x - 1, y + self.opponent):
-                            _moves.append(Move((x, y), (x - 1, y + self.opponent)))
+                        if self[x - 1, y + opponent][1] == opponent \
+                                or self.en_passant_square == (x - 1, y + opponent):
+                            _moves.append(Move((x, y), (x - 1, y + opponent)))
 
                     case PieceType.KNIGHT:
-                        _moves.extend(self.relative_moves((x, y), self.KNIGHT_MOVES))
+                        _moves.extend(self.relative_moves(player, (x, y), self.KNIGHT_MOVES))
 
                     case PieceType.BISHOP:
-                        _moves.extend(self.relative_moves((x, y), self.DIAGONAL_MOVES, multimove=True))
+                        _moves.extend(self.relative_moves(player, (x, y), self.DIAGONAL_MOVES, multimove=True))
 
                     case PieceType.ROOK:
-                        _moves.extend(self.relative_moves((x, y), self.PERPENDICULAR_MOVES, multimove=True))
+                        _moves.extend(self.relative_moves(player, (x, y), self.PERPENDICULAR_MOVES, multimove=True))
 
                     case PieceType.QUEEN:
-                        _moves.extend(self.relative_moves((x, y), self.KING_QUEEN_MOVES, multimove=True))
+                        _moves.extend(self.relative_moves(player, (x, y), self.KING_QUEEN_MOVES, multimove=True))
 
                     case PieceType.KING:
-                        _moves.extend(self.relative_moves((x, y), self.KING_QUEEN_MOVES, multimove=True))
+                        _moves.extend(self.relative_moves(player, (x, y), self.KING_QUEEN_MOVES))
         return _moves
 
     def make_move(self, move) -> Self:

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Self
 
 class AbstractTest(ABC):
     @abstractmethod
@@ -18,18 +18,15 @@ class AbstractTest(ABC):
     def get_actual_result(self) -> Any:
         pass
 
-    def perform(self) -> tuple[bool, Any]:
-        print(f"Performing test `{self.get_name()}`... ", end="")
+    def perform(self, idx: str) -> tuple[bool, Any, Self]:
         expected = self.get_expected_result()
         actual = self.get_actual_result()
         if expected == actual:
-            print("passed")
-            return True, actual
+            print(f"{idx} {self.get_name()} passed")
+            return True, actual, self
         else:
-            print("failed")
-            print(f" - Expected: {expected}")
-            print(f" - Actual: {actual}")
-            return False, actual
+            print(f"{idx} {self.get_name()} failed")
+            return False, actual, self
 
     @staticmethod
     @abstractmethod
