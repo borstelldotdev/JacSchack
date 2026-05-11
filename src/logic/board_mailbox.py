@@ -206,6 +206,10 @@ class BoardMailbox(AbstractBoard):
         new.to_move = to_move * -1
         return new.is_legal(to_move * -1)
 
+    def is_in_check(self, player: Player) -> bool:
+        return self.is_legal(player * -1)
+
+
     def is_empty(self, x: int, y: int) -> bool:
         return self[x, y] == self.empty_square
 

@@ -12,7 +12,7 @@ from src.logic.board_mailbox import BoardMailbox
 from src.logic.search import NegaMax
 
 
-GRID_SQUARE_SIZE = 60
+GRID_SQUARE_SIZE = 80
 FONT_SIZE = 30
 TOP_PADDING = 80
 SIDE_PADDING = 20

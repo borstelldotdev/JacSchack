@@ -6,7 +6,7 @@ class NegaMax:
         pass
 
     def nega_max(self, board: BoardMailbox, depth: int):
-        if depth == 0:
+        if depth == 0 or len(board.my_moves) == 0:
             return evaluate(board)
         return max(-self.nega_max(board.make_move(x), depth - 1) for x in board.my_moves)
 
