@@ -5,7 +5,7 @@ from queue import Queue, Empty
 from time import sleep
 from enum import Enum, auto
 
-from src.logic.abstract_board import AbstractBoard, Move
+from src.logic.abstract_board import Move
 from src.logic.enums import PieceType, Player
 from src.logic.bitboard import Bitboard
 from src.logic.board_mailbox import BoardMailbox
@@ -44,11 +44,9 @@ class PlayerController(Enum):
 
 
 class VisualBoard:
-    def __init__(self, board: AbstractBoard=None, highlight_bitboard: Bitboard=None,
-                 overlay_bitboard: Bitboard=None, overlay_arrows: list[Move]=[],
-                 window_title: str="JacSchack", title: str="", commands: Queue=None, sudo: bool=False,
-                 white_controller: PlayerController=PlayerController.HUMAN,
-                 black_controller: PlayerController=PlayerController.HUMAN, engine_depth: int=3):
+    def __init__(self, board: BoardMailbox=None, window_title: str="JacSchack", title: str="", commands: Queue=None,
+                 sudo: bool=False, white_controller: PlayerController=PlayerController.HUMAN,
+                 black_controller: PlayerController=PlayerController.HUMAN, engine_depth: int=1):
 
         pygame.init()
         pygame.font.init()
@@ -63,12 +61,15 @@ class VisualBoard:
         self.white_controller: PlayerController = white_controller
         self.black_controller: PlayerController = black_controller
         self.engine_depth: int = engine_depth
+        self._search_thread: Thread | None = None
 
         self.board: BoardMailbox | None = board
-        self.highlight_bitboard: Bitboard | None = highlight_bitboard
-        self.overlay_bitboard: Bitboard | None = overlay_bitboard
-        self.overlay_arrows: list[Move] | None = overlay_arrows
+        self.highlight_bitboard: Bitboard | None = None
+        self.overlay_bitboard: Bitboard | None = None
+        self.overlay_arrows: list[Move] = []
         self.selected_square: tuple[int, int] | None = None
+        self.move_from_square: tuple[int, int] | None = None
+        self.move_to_square: tuple[int, int] | None = None
         self.pickup_x: int | None = None
         self.pickup_y: int | None = None
         self.title = title
@@ -244,6 +245,15 @@ class VisualBoard:
         self.highlight_bitboard = None
         self.selected_square = None
 
+    def search_thread(self, _is_thread=False):
+        if _is_thread:
+            best = NegaMax().make_decision(self.board, self.engine_depth)
+            self.play_move(best)
+            self._search_thread = None
+        else:
+            self._search_thread = Thread(target=self.search_thread, kwargs={"_is_thread": True}, daemon=True)
+            self._search_thread.start()
+
     def transform_pos(self, x: int, y: int):
         if self.flipped:
             return x, 7 - y
@@ -254,59 +264,61 @@ class VisualBoard:
         self.running = True
         while self.running:
             if self.board:
+                auto_move = (self.board.to_move == Player.WHITE and self.white_controller == PlayerController.MACHINE) \
+                         or (self.board.to_move == Player.BLACK and self.black_controller == PlayerController.MACHINE)
+
+
                 if len(self.board.my_moves) == 0:
                     self.title = "Schack matt!"
+                elif auto_move and self._search_thread is None:
+                    self.title = "Tänker..."
+                    self.search_thread()
+                elif not auto_move:
+                    self.title = "Spela ett drag"
 
-                else:
-                    if self.board.to_move == Player.WHITE:
-                        if self.white_controller == PlayerController.MACHINE:
-                            best = NegaMax().make_decision(self.board, self.engine_depth)
-                            self.play_move(best)
-                    if self.board.to_move == Player.BLACK:
-                        if self.black_controller == PlayerController.MACHINE:
-                            best = NegaMax().make_decision(self.board, self.engine_depth)
-                            self.play_move(best)
+                # Event-loop
+                for event in pygame.event.get():
+                    match event.type:
+                        case pygame.QUIT:
+                            self.running = False
+                        case pygame.MOUSEBUTTONDOWN:
+                            if auto_move: continue
 
+                            if pygame.Rect(BOARD_LEFT_X, BOARD_TOP_Y, GRID_SQUARE_SIZE * 8, GRID_SQUARE_SIZE * 8) \
+                                .collidepoint(event.pos):
+                                x, y = self.transform_pos((event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE,
+                                                          (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE)
+                                if self.selected_square == (x, y):
+                                    self.selected_square = None
+                                    self.highlight_bitboard = None
+                                else:
+                                    no_move_made = True
+                                    self.pickup_x = (event.pos[0] - BOARD_LEFT_X) % GRID_SQUARE_SIZE
+                                    self.pickup_y = (event.pos[1] - BOARD_TOP_Y) % GRID_SQUARE_SIZE
+                                    self.highlight_bitboard = Bitboard(0)
+                                    for move in self.board.my_moves:
+                                        if move.from_square == self.selected_square and move.to_square == (x, y):
+                                            self.play_move(move)
+                                            no_move_made = False
+                                            break
+                                        elif move.from_square == (x, y):
+                                            self.highlight_bitboard = self.highlight_bitboard.set(move.to_square, True)
 
-            # Event-loop
-            for event in pygame.event.get():
-                match event.type:
-                    case pygame.QUIT:
-                        self.running = False
-                    case pygame.MOUSEBUTTONDOWN:
-                        if pygame.Rect(BOARD_LEFT_X, BOARD_TOP_Y, GRID_SQUARE_SIZE * 8, GRID_SQUARE_SIZE * 8) \
-                            .collidepoint(event.pos):
+                                    if no_move_made:
+                                        self.selected_square = (x, y)
+
+                        case pygame.MOUSEBUTTONUP:
+                            if auto_move: continue
+
+                            self.pickup_x = None
+                            self.pickup_y = None
                             x, y = self.transform_pos((event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE,
                                                       (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE)
-                            if self.selected_square == (x, y):
-                                self.selected_square = None
-                                self.highlight_bitboard = None
-                            else:
-                                no_move_made = True
-                                self.pickup_x = (event.pos[0] - BOARD_LEFT_X) % GRID_SQUARE_SIZE
-                                self.pickup_y = (event.pos[1] - BOARD_TOP_Y) % GRID_SQUARE_SIZE
-                                self.highlight_bitboard = Bitboard(0)
-                                for move in self.board.my_moves:
-                                    if move.from_square == self.selected_square and move.to_square == (x, y):
-                                        self.play_move(move)
-                                        no_move_made = False
-                                        break
-                                    elif move.from_square == (x, y):
-                                        self.highlight_bitboard = self.highlight_bitboard.set(move.to_square, True)
-
-                                if no_move_made:
-                                    self.selected_square = (x, y)
-
-                    case pygame.MOUSEBUTTONUP:
-                        self.pickup_x = None
-                        self.pickup_y = None
-                        x, y = self.transform_pos((event.pos[0] - BOARD_LEFT_X) // GRID_SQUARE_SIZE,
-                                                  (event.pos[1] - BOARD_TOP_Y) // GRID_SQUARE_SIZE)
-                        if (x, y) == self.selected_square:
-                            continue
-                        for move in self.board.my_moves:
-                            if move.from_square == self.selected_square and move.to_square == (x, y):
-                                self.play_move(move)
+                            if (x, y) == self.selected_square:
+                                continue
+                            for move in self.board.my_moves:
+                                if move.from_square == self.selected_square and move.to_square == (x, y):
+                                    self.play_move(move)
 
 
             self.screen.fill(BACKGROUND_COLOR)

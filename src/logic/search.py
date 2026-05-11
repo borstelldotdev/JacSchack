@@ -15,7 +15,6 @@ class NegaMax:
         for move in board.my_moves:
             new_board = board.make_move(move)
             evaluation = -self.nega_max(new_board, depth)
-            # evaluation = evaluate(new_board)
             print(move, evaluation)
             if evaluation > best_eval:
                 best_eval = evaluation
